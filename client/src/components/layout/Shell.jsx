@@ -9,43 +9,41 @@ export default function Shell({ children }) {
 
   return (
     <div className="relative z-10 min-h-dvh">
-      <header className="sticky top-0 z-20 border-b rule bg-[color:var(--color-canvas)]/90 backdrop-blur-sm">
+      <header className="sticky top-0 z-20 border-b rule backdrop-blur-sm bg-[color:var(--color-canvas)]/80">
         <div className="mx-auto max-w-[1200px] px-4 sm:px-6">
-          <div className="flex h-14 items-center justify-between">
-            <NavLink to="/" className="flex items-center gap-2.5">
-              <div className="size-8 rounded-lg bg-[color:var(--color-primary)] grid place-items-center">
-                <span className="text-white text-xs font-bold">TJ</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-semibold text-[color:var(--color-ink)] leading-tight">
-                  TJ Katsastus
-                </span>
-                <span className="text-[10px] text-[color:var(--color-ink-4)] leading-tight">
-                  WhatsApp Dashboard
-                </span>
-              </div>
+          <div className="flex h-12 sm:h-14 items-end justify-between pt-2 sm:pt-3">
+            <NavLink to="/" className="group flex items-baseline gap-1.5 pb-2.5 sm:pb-3 min-w-0">
+              <span className="font-display text-[18px] sm:text-[22px] font-medium leading-none text-[color:var(--color-ink)] truncate">
+                TJ Katsastus
+              </span>
+              <span className="hidden md:inline text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)] pb-0.5">
+                WhatsApp Dashboard
+              </span>
             </NavLink>
-            <div className="flex items-center gap-2">
-              <NavLink
-                to="/"
-                end
-                className={({ isActive }) =>
-                  [
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors',
-                    isActive
-                      ? 'bg-[color:var(--color-primary-soft)] text-[color:var(--color-primary)]'
-                      : 'text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] hover:bg-[color:var(--color-canvas-sunk)]',
-                  ].join(' ')
-                }
-              >
-                <LayoutDashboard size={14} strokeWidth={1.75} />
-                <span className="hidden sm:inline">Overview</span>
-              </NavLink>
+            <div className="flex items-center gap-0.5 sm:gap-1">
+              <nav className="flex items-center">
+                <NavLink
+                  to="/"
+                  end
+                  className={({ isActive }) =>
+                    [
+                      'flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] tracking-tight transition-colors',
+                      'border-b-2 -mb-px',
+                      isActive
+                        ? 'border-[color:var(--color-clay)] text-[color:var(--color-ink)]'
+                        : 'border-transparent text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)]',
+                    ].join(' ')
+                  }
+                >
+                  <LayoutDashboard size={14} strokeWidth={1.75} />
+                  <span className="hidden sm:inline">Overview</span>
+                </NavLink>
+              </nav>
               <button
                 type="button"
                 onClick={toggle}
                 aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                className="grid size-8 place-items-center rounded-lg border rule text-[color:var(--color-ink-3)] transition-colors hover:text-[color:var(--color-ink)] hover:border-[color:var(--color-rule-strong)]"
+                className="ml-2 sm:ml-3 mb-1 grid size-8 place-items-center rounded-full border rule text-[color:var(--color-ink-3)] transition-colors hover:border-[color:var(--color-rule-strong)] hover:text-[color:var(--color-ink)]"
               >
                 {isDark ? <Sun size={14} strokeWidth={1.75} /> : <Moon size={14} strokeWidth={1.75} />}
               </button>

@@ -35,7 +35,7 @@ export async function triggerFeeder(maxLeads) {
   return data;
 }
 
-export async function fetchFeederStatus() {
-  const { data } = await api.get('/feeder/status');
+export async function pollMessageStatuses() {
+  const { data } = await api.post('/messages/poll');
   return data;
 }

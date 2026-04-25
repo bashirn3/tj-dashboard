@@ -5,6 +5,7 @@ import statsRouter from './routes/stats.js';
 import customersRouter from './routes/customers.js';
 import chatRouter from './routes/chat.js';
 import feederRouter from './routes/feeder.js';
+import messagesRouter from './routes/messages.js';
 
 const app = express();
 app.use(cors());
@@ -21,6 +22,7 @@ api.use('/stats', statsRouter);
 api.use('/customers', customersRouter);
 api.use('/chat', chatRouter);
 api.use('/feeder', feederRouter);
+api.use('/messages', messagesRouter);
 
 app.use('/api', api);
 app.use('/', api);

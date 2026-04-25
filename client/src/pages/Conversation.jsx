@@ -27,12 +27,11 @@ export default function ConversationPage() {
   const messages = chatQ.data?.messages;
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-56px)]">
-      {/* top bar */}
-      <div className="border-b rule bg-[color:var(--color-canvas)] px-4 sm:px-6 py-3 flex items-center gap-3">
+    <div className="flex flex-col h-[calc(100dvh-48px)] sm:h-[calc(100dvh-56px)]">
+      <div className="border-b rule bg-[color:var(--color-canvas)]/80 backdrop-blur-sm px-4 sm:px-6 py-2.5 flex items-center gap-3">
         <Link
           to="/"
-          className="grid size-8 place-items-center rounded-lg border rule text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] hover:border-[color:var(--color-rule-strong)] transition-colors"
+          className="grid size-8 place-items-center rounded-full border rule text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] hover:border-[color:var(--color-rule-strong)] transition-colors"
         >
           <ArrowLeft size={16} strokeWidth={1.75} />
         </Link>
@@ -41,18 +40,18 @@ export default function ConversationPage() {
             <Skeleton className="h-5 w-48" />
           ) : (
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-[color:var(--color-ink)] truncate">
+              <span className="text-[13px] font-medium text-[color:var(--color-ink)] truncate">
                 {customer?.name || formatPhone(phone)}
               </span>
               {customer && <StatusPill status={customer.status} />}
             </div>
           )}
-          <div className="text-xs text-[color:var(--color-ink-4)]">{formatPhone(phone)}</div>
+          <div className="text-[11px] text-[color:var(--color-ink-4)]">{formatPhone(phone)}</div>
         </div>
         <button
           type="button"
           onClick={() => setShowInfo((v) => !v)}
-          className="lg:hidden grid size-8 place-items-center rounded-lg border rule text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] hover:border-[color:var(--color-rule-strong)] transition-colors"
+          className="lg:hidden grid size-8 place-items-center rounded-full border rule text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] hover:border-[color:var(--color-rule-strong)] transition-colors"
           aria-label="Customer info"
         >
           <Info size={16} strokeWidth={1.75} />
@@ -62,7 +61,7 @@ export default function ConversationPage() {
             type="button"
             onClick={() => stopMutation.mutate()}
             disabled={stopMutation.isPending}
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--color-red)]/30 px-3 py-1.5 text-xs font-medium text-[color:var(--color-red)] hover:bg-[color:var(--color-red-soft)] transition-colors disabled:opacity-50"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[color:var(--color-sienna)]/30 px-3 py-1.5 text-[11px] font-medium text-[color:var(--color-sienna)] hover:bg-[color:var(--color-sienna-soft)] transition-colors disabled:opacity-50"
           >
             {stopMutation.isPending ? (
               <Loader2 size={12} className="animate-spin" />
@@ -75,27 +74,24 @@ export default function ConversationPage() {
       </div>
 
       <div className="flex flex-1 min-h-0 relative">
-        {/* chat */}
         <div className="flex-1 flex flex-col min-w-0 bg-[color:var(--color-canvas-sunk)]">
           <ChatViewer messages={messages} loading={chatQ.isLoading} />
         </div>
 
-        {/* desktop sidebar */}
-        <aside className="hidden lg:flex w-72 flex-col border-l rule bg-[color:var(--color-canvas)] overflow-y-auto">
+        <aside className="hidden lg:flex w-72 flex-col border-l rule bg-[color:var(--color-canvas-raised)] overflow-y-auto">
           <CustomerInfoPanel customer={customer} loading={customerQ.isLoading} stopMutation={stopMutation} />
         </aside>
 
-        {/* mobile slide-over */}
         {showInfo && (
           <>
             <div className="lg:hidden fixed inset-0 z-30 bg-black/40" onClick={() => setShowInfo(false)} />
-            <aside className="lg:hidden fixed right-0 top-0 bottom-0 z-40 w-[min(320px,85vw)] flex flex-col bg-[color:var(--color-canvas)] shadow-xl overflow-y-auto">
+            <aside className="lg:hidden fixed right-0 top-0 bottom-0 z-40 w-[min(320px,85vw)] flex flex-col bg-[color:var(--color-canvas-raised)] shadow-xl overflow-y-auto">
               <div className="flex items-center justify-between px-4 py-3 border-b rule">
-                <span className="text-sm font-semibold text-[color:var(--color-ink)]">Customer Info</span>
+                <span className="text-[13px] font-medium text-[color:var(--color-ink)]">Customer Info</span>
                 <button
                   type="button"
                   onClick={() => setShowInfo(false)}
-                  className="grid size-8 place-items-center rounded-lg border rule text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] transition-colors"
+                  className="grid size-8 place-items-center rounded-full border rule text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] transition-colors"
                 >
                   <X size={16} strokeWidth={1.75} />
                 </button>
@@ -124,7 +120,7 @@ function CustomerInfoPanel({ customer, loading, stopMutation, showStop }) {
 
   return (
     <div className="p-5 space-y-5">
-      <h4 className="text-xs font-semibold text-[color:var(--color-ink-3)] uppercase tracking-wider">
+      <h4 className="text-[10px] font-semibold text-[color:var(--color-ink-4)] uppercase tracking-[0.18em]">
         Customer Info
       </h4>
       <InfoRow icon={Phone} label="Phone" value={formatPhone(customer.number)} />
@@ -135,7 +131,7 @@ function CustomerInfoPanel({ customer, loading, stopMutation, showStop }) {
       <InfoRow label="Reminder Stage" value={customer.reminder_stage} />
 
       <div className="border-t rule pt-4 space-y-3">
-        <h4 className="text-xs font-semibold text-[color:var(--color-ink-3)] uppercase tracking-wider">
+        <h4 className="text-[10px] font-semibold text-[color:var(--color-ink-4)] uppercase tracking-[0.18em]">
           Timeline
         </h4>
         <TimelineRow icon={Send} label="First sent" date={customer.last_outbound_at} />
@@ -148,7 +144,7 @@ function CustomerInfoPanel({ customer, loading, stopMutation, showStop }) {
           type="button"
           onClick={() => stopMutation.mutate()}
           disabled={stopMutation.isPending}
-          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--color-red)]/30 px-3 py-2 text-xs font-medium text-[color:var(--color-red)] hover:bg-[color:var(--color-red-soft)] transition-colors disabled:opacity-50"
+          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-[color:var(--color-sienna)]/30 px-3 py-2 text-[11px] font-medium text-[color:var(--color-sienna)] hover:bg-[color:var(--color-sienna-soft)] transition-colors disabled:opacity-50"
         >
           {stopMutation.isPending ? (
             <Loader2 size={12} className="animate-spin" />
@@ -165,10 +161,10 @@ function CustomerInfoPanel({ customer, loading, stopMutation, showStop }) {
 function InfoRow({ icon: Icon, label, value }) {
   if (!value) return null;
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-[11px]">
       {Icon && <Icon size={12} className="mt-0.5 text-[color:var(--color-ink-4)]" strokeWidth={1.75} />}
       <div className="min-w-0">
-        <div className="text-[color:var(--color-ink-4)]">{label}</div>
+        <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-ink-4)]">{label}</div>
         <div className="text-[color:var(--color-ink)] font-medium break-all">{String(value)}</div>
       </div>
     </div>
@@ -177,10 +173,10 @@ function InfoRow({ icon: Icon, label, value }) {
 
 function TimelineRow({ icon: Icon, label, date }) {
   return (
-    <div className="flex items-start gap-2 text-xs">
+    <div className="flex items-start gap-2 text-[11px]">
       <Icon size={12} className="mt-0.5 text-[color:var(--color-ink-4)]" strokeWidth={1.75} />
       <div>
-        <div className="text-[color:var(--color-ink-4)]">{label}</div>
+        <div className="text-[10px] uppercase tracking-wider text-[color:var(--color-ink-4)]">{label}</div>
         <div className="text-[color:var(--color-ink)]">{absoluteTime(date)}</div>
       </div>
     </div>

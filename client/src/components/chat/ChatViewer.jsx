@@ -1,7 +1,6 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
-import { Bot, User, ArrowDown } from 'lucide-react';
+import { Bot, User, ArrowDown, Check, CheckCheck, Eye } from 'lucide-react';
 import { dayLabel, timeOfDay } from '../../lib/format.js';
-import clsx from 'clsx';
 
 export default function ChatViewer({ messages, loading }) {
   const scrollRef = useRef(null);
@@ -65,7 +64,7 @@ export default function ChatViewer({ messages, loading }) {
         <button
           type="button"
           onClick={jumpToBottom}
-          className="absolute bottom-4 right-6 inline-flex items-center gap-1.5 rounded-full border rule-strong bg-[color:var(--color-canvas)] px-3 py-1.5 text-[11px] text-[color:var(--color-ink-2)] shadow-sm transition-colors hover:bg-[color:var(--color-canvas-sunk)]"
+          className="absolute bottom-4 right-6 inline-flex items-center gap-1.5 rounded-full border rule-strong bg-[color:var(--color-canvas-raised)] px-3 py-1.5 text-[11px] text-[color:var(--color-ink-2)] shadow-sm transition-colors hover:bg-[color:var(--color-canvas-sunk)]"
         >
           <ArrowDown size={12} strokeWidth={1.75} />
           Latest
@@ -103,10 +102,17 @@ function Message({ m }) {
   return <HumanBubble m={m} />;
 }
 
+function DeliveryTick({ status }) {
+  if (status === 'read') return <Eye size={10} strokeWidth={1.75} className="text-[color:var(--color-moss)]" />;
+  if (status === 'delivered') return <CheckCheck size={10} strokeWidth={1.75} className="text-[color:var(--color-ink-4)]" />;
+  if (status === 'sent') return <Check size={10} strokeWidth={1.75} className="text-[color:var(--color-ink-4)]" />;
+  return null;
+}
+
 function HumanBubble({ m }) {
   return (
     <div className="flex flex-col items-end">
-      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[color:var(--color-primary-soft)] px-3.5 py-2.5 text-[14px] leading-[1.55] text-[color:var(--color-ink)] whitespace-pre-wrap">
+      <div className="max-w-[90%] sm:max-w-[85%] rounded-2xl rounded-br-md border rule bg-[color:var(--color-canvas-raised)] px-3 sm:px-3.5 py-2 sm:py-2.5 text-[14px] leading-[1.55] text-[color:var(--color-ink)] whitespace-pre-wrap">
         {m.text}
       </div>
       <div className="mt-1 flex items-center gap-1.5 text-[10px] text-[color:var(--color-ink-4)]">
@@ -120,12 +126,13 @@ function HumanBubble({ m }) {
 function AiBubble({ m }) {
   return (
     <div className="flex flex-col items-start">
-      <div className="max-w-[85%] rounded-2xl rounded-bl-md border rule bg-[color:var(--color-canvas)] px-3.5 py-2.5 text-[14px] leading-[1.55] text-[color:var(--color-ink)] whitespace-pre-wrap">
+      <div className="max-w-[90%] sm:max-w-[85%] rounded-2xl rounded-bl-md border rule bg-[color:var(--color-canvas)] px-3 sm:px-3.5 py-2 sm:py-2.5 text-[14px] leading-[1.55] text-[color:var(--color-ink)] whitespace-pre-wrap">
         {m.text || <em className="text-[color:var(--color-ink-4)]">(empty)</em>}
       </div>
       <div className="mt-1 flex items-center gap-1.5 text-[10px] text-[color:var(--color-ink-4)]">
         <Bot size={10} strokeWidth={1.75} />
         <span>{timeOfDay(m.created_at)}</span>
+        {m.delivery_status && <DeliveryTick status={m.delivery_status} />}
       </div>
     </div>
   );
