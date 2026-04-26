@@ -82,7 +82,11 @@ router.post('/:phone/stop', async (req, res) => {
 });
 
 function formatCustomer(row) {
-  const raw = row.raw_data?.tj_outbound || row.raw_data || {};
+  let rawData = row.raw_data;
+  if (typeof rawData === 'string') {
+    try { rawData = JSON.parse(rawData); } catch { rawData = {}; }
+  }
+  const raw = rawData?.tj_outbound || rawData || {};
 
   let name = '';
   if (raw.customer_name) name = raw.customer_name;
