@@ -17,7 +17,7 @@ router.get('/:phone', async (req, res) => {
     supabase
       .from('tj_message_status')
       .select('wamid, status, delivered_at, read_at')
-      .eq('number', phone),
+      .eq('number', normalized),
   ]);
 
   if (chatRes.error) {
@@ -33,8 +33,8 @@ router.get('/:phone', async (req, res) => {
   const messages = (chatRes.data || []).map((row) => {
     const msg = row.message;
     const type = msg?.type || 'system';
-    const content = msg?.data?.content || '';
-    const kwargs = msg?.data?.additional_kwargs || {};
+    const content = msg?.content || msg?.data?.content || '';
+    const kwargs = msg?.additional_kwargs || msg?.data?.additional_kwargs || {};
     const wamid = kwargs.wamid || null;
     const msgStatus = wamid ? statusByWamid[wamid] : null;
 
