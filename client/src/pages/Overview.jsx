@@ -13,6 +13,7 @@ import {
   Phone,
   CheckCheck,
   Eye,
+  ArrowUpDown,
 } from 'lucide-react';
 import { fetchStats, fetchCustomers, triggerFeeder, pollMessageStatuses } from '../lib/api.js';
 import { relativeTime, formatPhone } from '../lib/format.js';
@@ -84,16 +85,21 @@ function FeederControl() {
   const queryClient = useQueryClient();
   const [count, setCount] = useState(50);
   const [result, setResult] = useState(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const COST_PER_MSG = 0.05;
 
   const mutation = useMutation({
     mutationFn: () => triggerFeeder(count),
     onSuccess: () => {
       setResult({ ok: true, msg: `Triggered ${count} leads` });
+      setShowConfirm(false);
       queryClient.invalidateQueries({ queryKey: ['stats'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: (err) => {
       setResult({ ok: false, msg: err.response?.data?.error || err.message });
+      setShowConfirm(false);
     },
   });
 
@@ -120,7 +126,7 @@ function FeederControl() {
           </label>
           <button
             type="button"
-            onClick={() => mutation.mutate()}
+            onClick={() => setShowConfirm(true)}
             disabled={mutation.isPending}
             className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
           >
@@ -144,6 +150,58 @@ function FeederControl() {
           {result.msg}
         </div>
       )}
+
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="card mx-4 w-full max-w-sm px-6 py-5 shadow-xl">
+            <h3 className="text-base font-display font-semibold text-[color:var(--color-ink)]">
+              Confirm Campaign
+            </h3>
+            <div className="mt-3 space-y-2 text-[13px] text-[color:var(--color-ink-3)]">
+              <div className="flex justify-between">
+                <span>Recipients</span>
+                <span className="font-medium text-[color:var(--color-ink)]">{count} people</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Cost per message</span>
+                <span className="font-medium text-[color:var(--color-ink)]">${COST_PER_MSG.toFixed(2)}</span>
+              </div>
+              <div className="border-t rule my-2" />
+              <div className="flex justify-between">
+                <span className="font-medium text-[color:var(--color-ink)]">Estimated total</span>
+                <span className="font-display font-semibold text-[color:var(--color-ink)]">
+                  ${(count * COST_PER_MSG).toFixed(2)}
+                </span>
+              </div>
+            </div>
+            <p className="mt-3 text-[11px] text-[color:var(--color-ink-4)]">
+              This will send WhatsApp template messages to up to {count} new customers. Are you sure?
+            </p>
+            <div className="mt-4 flex items-center gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                className="rounded-lg border rule px-4 py-2 text-sm font-medium text-[color:var(--color-ink-3)] transition-colors hover:bg-[color:var(--color-canvas-sunk)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => mutation.mutate()}
+                disabled={mutation.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
+              >
+                {mutation.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Send size={14} />
+                )}
+                Confirm Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -151,6 +209,7 @@ function FeederControl() {
 function CustomerList() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [sortBy, setSortBy] = useState('last_outbound_at');
 
   const { data, isLoading } = useQuery({
     queryKey: ['customers', statusFilter],
@@ -158,6 +217,7 @@ function CustomerList() {
   });
 
   const customers = data?.customers || [];
+
   const filtered = search
     ? customers.filter(
         (c) =>
@@ -166,6 +226,15 @@ function CustomerList() {
           String(c.customer_id).includes(search)
       )
     : customers;
+
+  const sorted = [...filtered].sort((a, b) => {
+    const aVal = a[sortBy] || '';
+    const bVal = b[sortBy] || '';
+    if (!aVal && !bVal) return 0;
+    if (!aVal) return 1;
+    if (!bVal) return -1;
+    return new Date(bVal) - new Date(aVal);
+  });
 
   return (
     <div className="card overflow-hidden">
@@ -202,6 +271,14 @@ function CustomerList() {
             <option value="sent">Sent</option>
             <option value="stopped">Stopped</option>
           </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="rounded-lg border rule bg-[color:var(--color-canvas)] px-3 py-1.5 text-[11px] text-[color:var(--color-ink)] focus:border-[color:var(--color-clay)] focus:outline-none"
+          >
+            <option value="last_outbound_at">Last sent</option>
+            <option value="last_inbound_at">Last replied</option>
+          </select>
         </div>
       </div>
 
@@ -211,11 +288,11 @@ function CustomerList() {
             <Skeleton key={i} className="h-12" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <EmptyState icon={Users} title="No customers" hint="Trigger the feeder to start contacting leads." />
       ) : (
         <div className="divide-y divide-[color:var(--color-rule)]">
-          {filtered.map((c) => (
+          {sorted.map((c) => (
             <Link
               key={c.number}
               to={`/customers/${c.number}`}
@@ -240,6 +317,11 @@ function CustomerList() {
                 <div className="text-[11px] text-[color:var(--color-ink-3)]">
                   {relativeTime(c.last_outbound_at)}
                 </div>
+                {c.last_inbound_at && (
+                  <div className="text-[10px] text-[color:var(--color-moss)]">
+                    replied {relativeTime(c.last_inbound_at)}
+                  </div>
+                )}
               </div>
               <ChevronRight size={14} className="text-[color:var(--color-ink-5)]" />
             </Link>
