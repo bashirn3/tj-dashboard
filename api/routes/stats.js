@@ -10,7 +10,7 @@ const HISTORICAL_BASELINE = {
 
 router.get('/', async (_req, res) => {
   const [sessionsRes, statusesRes] = await Promise.all([
-    supabase.from('tj_outbound_sessions').select('last_outbound_at, last_inbound_at, stop_reminders'),
+    supabase.from('tj_outbound_sessions').select('last_outbound_at, last_inbound_at, stop_reminders, stop_reason'),
     supabase.from('tj_message_status').select('status, sent_at'),
   ]);
 
@@ -36,11 +36,13 @@ router.get('/', async (_req, res) => {
   let monthSent = 0;
   let monthReplied = 0;
   let stopped = 0;
+  let booked = 0;
 
   for (const s of sessions) {
     totalSent++;
     if (s.last_inbound_at) totalReplied++;
-    if (s.stop_reminders) stopped++;
+    if (s.stop_reminders && s.stop_reason === 'booked') booked++;
+    else if (s.stop_reminders) stopped++;
 
     const sentAt = new Date(s.last_outbound_at);
     if (sentAt >= dayAgo) {
@@ -75,6 +77,7 @@ router.get('/', async (_req, res) => {
       replied: totalReplied,
       replyRate: totalSent ? Math.round((totalReplied / totalSent) * 100) : 0,
       stopped,
+      booked,
     },
     today: {
       sent: todaySent,

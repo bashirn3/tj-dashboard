@@ -19,8 +19,10 @@ router.get('/', async (req, res) => {
     query = query.not('last_inbound_at', 'is', null);
   } else if (status === 'sent') {
     query = query.is('last_inbound_at', null);
+  } else if (status === 'booked') {
+    query = query.eq('stop_reminders', true).eq('stop_reason', 'booked');
   } else if (status === 'stopped') {
-    query = query.eq('stop_reminders', true);
+    query = query.eq('stop_reminders', true).neq('stop_reason', 'booked');
   }
 
   const { data, error } = await query;
@@ -93,7 +95,8 @@ function formatCustomer(row) {
   else if (row.customer_id) name = `Customer #${row.customer_id}`;
 
   let status = 'sent';
-  if (row.stop_reminders) status = 'stopped';
+  if (row.stop_reminders && row.stop_reason === 'booked') status = 'booked';
+  else if (row.stop_reminders) status = 'stopped';
   else if (row.last_inbound_at) status = 'replied';
 
   return {

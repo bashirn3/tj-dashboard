@@ -100,6 +100,7 @@ function CustomerList() {
               className="rounded-lg border rule bg-[color:var(--color-canvas)] px-3 py-1.5 text-[11px] text-[color:var(--color-ink)] focus:border-[color:var(--color-clay)] focus:outline-none"
             >
               <option value="">All statuses</option>
+              <option value="booked">Booked</option>
               <option value="replied">Replied</option>
               <option value="sent">Sent</option>
               <option value="stopped">Stopped</option>

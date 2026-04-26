@@ -11,6 +11,7 @@ import {
   Eye,
   Activity,
   OctagonX,
+  CalendarCheck,
 } from 'lucide-react';
 import { fetchStats, triggerFeeder, pollMessageStatuses } from '../lib/api.js';
 import Skeleton from '../components/ui/Skeleton.jsx';
@@ -25,9 +26,9 @@ const STATUS_CARDS = [
   { key: 'sent', label: 'Sent', icon: Send, tone: 'clay' },
   { key: 'delivered', label: 'Delivered', icon: CheckCheck, tone: 'amber' },
   { key: 'read', label: 'Read', icon: Eye, tone: 'moss' },
-  { key: 'replied', label: 'Replied', icon: MessageSquareReply, tone: 'moss' },
+  { key: 'replied', label: 'Replied', icon: MessageSquareReply, tone: 'amber' },
+  { key: 'booked', label: 'Booked', icon: CalendarCheck, tone: 'moss' },
   { key: 'replyRate', label: 'Reply Rate', icon: Percent, tone: 'amber', suffix: '%' },
-  { key: 'stopped', label: 'Stopped', icon: OctagonX, tone: 'sienna' },
 ];
 
 export default function StatsPage() {

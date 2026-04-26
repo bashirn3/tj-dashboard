@@ -44,7 +44,8 @@ export function formatPhone(number) {
 }
 
 export const STATUS_META = {
-  replied: { label: 'Replied', color: 'moss' },
+  booked: { label: 'Booked', color: 'moss' },
+  replied: { label: 'Replied', color: 'amber' },
   sent: { label: 'Sent', color: 'gray' },
   stopped: { label: 'Stopped', color: 'sienna' },
 };
