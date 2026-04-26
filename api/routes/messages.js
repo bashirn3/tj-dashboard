@@ -4,15 +4,20 @@ import axios from 'axios';
 
 const router = Router();
 
-const YCLOUD_API_KEY = 'cceca7f729213f2d7dc84082acb63a21';
+const YCLOUD_API_KEY = process.env.YCLOUD_API_KEY || 'cceca7f729213f2d7dc84082acb63a21';
 const YCLOUD_BASE = 'https://api.ycloud.com/v2';
 const BATCH_SIZE = 20;
+const MAX_AGE_DAYS = 7;
 
 router.post('/poll', async (_req, res) => {
+  const cutoff = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
   const { data: pending, error } = await supabase
     .from('tj_message_status')
-    .select('id, wamid, number, status')
+    .select('id, wamid, ycloud_id, number, status, delivered_at')
     .neq('status', 'read')
+    .gt('sent_at', cutoff)
+    .not('ycloud_id', 'is', null)
     .order('sent_at', { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -26,11 +31,14 @@ router.post('/poll', async (_req, res) => {
   }
 
   let updated = 0;
+  const errors = [];
 
   const results = await Promise.allSettled(
     pending.map(async (msg) => {
+      if (!msg.ycloud_id || msg.ycloud_id.startsWith('legacy-')) return null;
+
       try {
-        const { data } = await axios.get(`${YCLOUD_BASE}/whatsapp/messages/${msg.wamid}`, {
+        const { data } = await axios.get(`${YCLOUD_BASE}/whatsapp/messages/${msg.ycloud_id}`, {
           headers: { 'X-API-Key': YCLOUD_API_KEY },
           timeout: 10_000,
         });
@@ -39,10 +47,15 @@ router.post('/poll', async (_req, res) => {
         if (newStatus === msg.status) return null;
 
         const updates = { status: newStatus, updated_at: new Date().toISOString() };
-        if (newStatus === 'delivered' && !msg.delivered_at) updates.delivered_at = new Date().toISOString();
-        if (newStatus === 'read') {
-          if (!msg.delivered_at) updates.delivered_at = new Date().toISOString();
-          updates.read_at = new Date().toISOString();
+
+        if (data.deliverTime) {
+          updates.delivered_at = data.deliverTime;
+        }
+        if (data.readTime) {
+          updates.read_at = data.readTime;
+          if (!updates.delivered_at && data.deliverTime) {
+            updates.delivered_at = data.deliverTime;
+          }
         }
 
         const { error: uErr } = await supabase
@@ -51,19 +64,26 @@ router.post('/poll', async (_req, res) => {
           .eq('id', msg.id);
 
         if (uErr) {
-          console.error(`[poll] update ${msg.wamid}:`, uErr.message);
+          errors.push({ ycloud_id: msg.ycloud_id, error: uErr.message });
           return null;
         }
 
         updated++;
-        return { wamid: msg.wamid, from: msg.status, to: newStatus };
+        return { ycloud_id: msg.ycloud_id, from: msg.status, to: newStatus };
       } catch (err) {
+        const status = err.response?.status;
+        const message = err.response?.data?.error?.message || err.message;
+        errors.push({ ycloud_id: msg.ycloud_id, status, message });
         return null;
       }
     })
   );
 
-  res.json({ updated, total_pending: pending.length });
+  if (errors.length > 0) {
+    console.warn(`[poll] ${errors.length} errors:`, errors.slice(0, 5));
+  }
+
+  res.json({ updated, total_pending: pending.length, errors: errors.length });
 });
 
 router.get('/statuses', async (req, res) => {
@@ -71,7 +91,7 @@ router.get('/statuses', async (req, res) => {
 
   let query = supabase
     .from('tj_message_status')
-    .select('wamid, number, stage, status, sent_at, delivered_at, read_at');
+    .select('wamid, ycloud_id, number, stage, status, sent_at, delivered_at, read_at');
 
   if (number) {
     query = query.eq('number', number);
