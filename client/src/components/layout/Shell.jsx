@@ -1,6 +1,27 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Sun, Moon } from 'lucide-react';
+import { Users, Activity, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../../lib/useTheme.js';
+
+function NavItem({ to, icon: Icon, children, end }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        [
+          'flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] tracking-tight transition-colors',
+          'border-b-2 -mb-px',
+          isActive
+            ? 'border-[color:var(--color-clay)] text-[color:var(--color-ink)]'
+            : 'border-transparent text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)]',
+        ].join(' ')
+      }
+    >
+      <Icon size={14} strokeWidth={1.75} />
+      <span className="hidden sm:inline">{children}</span>
+    </NavLink>
+  );
+}
 
 export default function Shell({ children }) {
   const location = useLocation();
@@ -22,22 +43,12 @@ export default function Shell({ children }) {
             </NavLink>
             <div className="flex items-center gap-0.5 sm:gap-1">
               <nav className="flex items-center">
-                <NavLink
-                  to="/"
-                  end
-                  className={({ isActive }) =>
-                    [
-                      'flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] tracking-tight transition-colors',
-                      'border-b-2 -mb-px',
-                      isActive
-                        ? 'border-[color:var(--color-clay)] text-[color:var(--color-ink)]'
-                        : 'border-transparent text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)]',
-                    ].join(' ')
-                  }
-                >
-                  <LayoutDashboard size={14} strokeWidth={1.75} />
-                  <span className="hidden sm:inline">Overview</span>
-                </NavLink>
+                <NavItem to="/" icon={Users} end>
+                  Customers
+                </NavItem>
+                <NavItem to="/stats" icon={Activity}>
+                  Stats
+                </NavItem>
               </nav>
               <button
                 type="button"

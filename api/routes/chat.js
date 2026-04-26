@@ -33,8 +33,18 @@ router.get('/:phone', async (req, res) => {
   const messages = (chatRes.data || []).map((row) => {
     const msg = row.message;
     const type = msg?.type || 'system';
+
+    if (type === 'tool') return null;
+
     const rawContent = msg?.content || msg?.data?.content || '';
     const kwargs = msg?.additional_kwargs || msg?.data?.additional_kwargs || {};
+    const toolCalls = msg?.tool_calls || [];
+
+    if (type === 'ai' && toolCalls.length > 0 && !rawContent) return null;
+    if (type === 'ai' && /^Calling \w/i.test(rawContent)) return null;
+    if (type === 'ai' && rawContent.startsWith('[{') && rawContent.includes('"success"')) return null;
+    if (type === 'ai' && rawContent.startsWith('[{"success"')) return null;
+
     const wamid = kwargs.wamid || null;
     const msgStatus = wamid ? statusByWamid[wamid] : null;
 
@@ -44,9 +54,12 @@ router.get('/:phone', async (req, res) => {
     }
     if (type === 'ai' && rawContent.startsWith('{')) {
       try {
-        text = JSON.parse(rawContent).message || rawContent;
+        const parsed = JSON.parse(rawContent);
+        text = parsed.message || rawContent;
       } catch {}
     }
+
+    if (!text || !text.trim()) return null;
 
     return {
       id: row.id,
@@ -59,7 +72,7 @@ router.get('/:phone', async (req, res) => {
       delivered_at: msgStatus?.delivered_at || null,
       read_at: msgStatus?.read_at || null,
     };
-  });
+  }).filter(Boolean);
 
   res.json({ session_id: sessionId, messages });
 });

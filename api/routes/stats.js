@@ -23,12 +23,18 @@ router.get('/', async (_req, res) => {
   const statuses = statusesRes.data || [];
 
   const now = new Date();
+  const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
   let totalSent = 0;
   let totalReplied = 0;
   let weekSent = 0;
   let weekReplied = 0;
+  let todaySent = 0;
+  let todayReplied = 0;
+  let monthSent = 0;
+  let monthReplied = 0;
   let stopped = 0;
 
   for (const s of sessions) {
@@ -37,9 +43,17 @@ router.get('/', async (_req, res) => {
     if (s.stop_reminders) stopped++;
 
     const sentAt = new Date(s.last_outbound_at);
+    if (sentAt >= dayAgo) {
+      todaySent++;
+      if (s.last_inbound_at) todayReplied++;
+    }
     if (sentAt >= weekAgo) {
       weekSent++;
       if (s.last_inbound_at) weekReplied++;
+    }
+    if (sentAt >= monthAgo) {
+      monthSent++;
+      if (s.last_inbound_at) monthReplied++;
     }
   }
 
@@ -62,10 +76,18 @@ router.get('/', async (_req, res) => {
       replyRate: totalSent ? Math.round((totalReplied / totalSent) * 100) : 0,
       stopped,
     },
+    today: {
+      sent: todaySent,
+      replied: todayReplied,
+    },
     week: {
       sent: weekSent,
       replied: weekReplied,
       replyRate: weekSent ? Math.round((weekReplied / weekSent) * 100) : 0,
+    },
+    month: {
+      sent: monthSent,
+      replied: monthReplied,
     },
   });
 });
