@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Send,
   MessageSquareReply,
@@ -208,8 +208,20 @@ function FeederControl() {
 
 function CustomerList() {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sortBy, setSortBy] = useState('last_outbound_at');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFilter = searchParams.get('status') || '';
+  const sortBy = searchParams.get('sort') || 'last_outbound_at';
+
+  const setStatusFilter = (val) => {
+    const next = new URLSearchParams(searchParams);
+    if (val) next.set('status', val); else next.delete('status');
+    setSearchParams(next, { replace: true });
+  };
+  const setSortBy = (val) => {
+    const next = new URLSearchParams(searchParams);
+    if (val && val !== 'last_outbound_at') next.set('sort', val); else next.delete('sort');
+    setSearchParams(next, { replace: true });
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['customers', statusFilter],

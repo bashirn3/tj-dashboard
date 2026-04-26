@@ -33,15 +33,25 @@ router.get('/:phone', async (req, res) => {
   const messages = (chatRes.data || []).map((row) => {
     const msg = row.message;
     const type = msg?.type || 'system';
-    const content = msg?.content || msg?.data?.content || '';
+    const rawContent = msg?.content || msg?.data?.content || '';
     const kwargs = msg?.additional_kwargs || msg?.data?.additional_kwargs || {};
     const wamid = kwargs.wamid || null;
     const msgStatus = wamid ? statusByWamid[wamid] : null;
 
+    let text = rawContent;
+    if (type === 'human' && rawContent.includes('User message: ')) {
+      text = rawContent.split('User message: ').slice(1).join('User message: ');
+    }
+    if (type === 'ai' && rawContent.startsWith('{')) {
+      try {
+        text = JSON.parse(rawContent).message || rawContent;
+      } catch {}
+    }
+
     return {
       id: row.id,
       type,
-      text: content,
+      text,
       created_at: row.timestamp,
       template_name: kwargs.template_name || null,
       wamid,
