@@ -9,6 +9,7 @@ router.get('/', async (req, res) => {
   let query = supabase
     .from('tj_outbound_sessions')
     .select('*')
+    .neq('stop_reason', 'business_customer')
     .order('last_outbound_at', { ascending: false });
 
   if (station) {
@@ -17,22 +18,32 @@ router.get('/', async (req, res) => {
 
   if (status === 'replied') {
     query = query.not('last_inbound_at', 'is', null);
-  } else if (status === 'sent') {
-    query = query.is('last_inbound_at', null);
   } else if (status === 'booked') {
     query = query.eq('stop_reminders', true).eq('stop_reason', 'booked');
   } else if (status === 'stopped') {
     query = query.eq('stop_reminders', true).neq('stop_reason', 'booked');
   }
 
-  const { data, error } = await query;
+  const [sessionsResult, statusesResult] = await Promise.all([
+    query,
+    supabase.from('tj_message_status').select('number, status'),
+  ]);
 
-  if (error) {
-    console.error('[customers]', error);
-    return res.status(500).json({ error: error.message });
+  if (sessionsResult.error) {
+    console.error('[customers]', sessionsResult.error);
+    return res.status(500).json({ error: sessionsResult.error.message });
   }
 
-  let customers = data.map(formatCustomer);
+  const statusByNumber = {};
+  for (const m of statusesResult.data || []) {
+    statusByNumber[m.number] = m.status;
+  }
+
+  let customers = sessionsResult.data.map((row) => formatCustomer(row, statusByNumber));
+
+  if (status && ['sent', 'read', 'delivered', 'failed'].includes(status)) {
+    customers = customers.filter((c) => c.status === status);
+  }
 
   if (search) {
     const q = search.toLowerCase();
@@ -50,21 +61,25 @@ router.get('/', async (req, res) => {
 router.get('/:phone', async (req, res) => {
   const { phone } = req.params;
 
-  const { data, error } = await supabase
-    .from('tj_outbound_sessions')
-    .select('*')
-    .eq('number', phone)
-    .maybeSingle();
+  const [sessionResult, statusResult] = await Promise.all([
+    supabase.from('tj_outbound_sessions').select('*').eq('number', phone).maybeSingle(),
+    supabase.from('tj_message_status').select('number, status').eq('number', phone).maybeSingle(),
+  ]);
 
-  if (error) {
-    console.error('[customer]', error);
-    return res.status(500).json({ error: error.message });
+  if (sessionResult.error) {
+    console.error('[customer]', sessionResult.error);
+    return res.status(500).json({ error: sessionResult.error.message });
   }
-  if (!data) {
+  if (!sessionResult.data) {
     return res.status(404).json({ error: 'Customer not found' });
   }
 
-  res.json(formatCustomer(data));
+  const statusByNumber = {};
+  if (statusResult.data) {
+    statusByNumber[statusResult.data.number] = statusResult.data.status;
+  }
+
+  res.json(formatCustomer(sessionResult.data, statusByNumber));
 });
 
 router.post('/:phone/stop', async (req, res) => {
@@ -83,7 +98,7 @@ router.post('/:phone/stop', async (req, res) => {
   res.json({ ok: true });
 });
 
-function formatCustomer(row) {
+function formatCustomer(row, statusByNumber = {}) {
   let rawData = row.raw_data;
   if (typeof rawData === 'string') {
     try { rawData = JSON.parse(rawData); } catch { rawData = {}; }
@@ -94,10 +109,15 @@ function formatCustomer(row) {
   if (raw.customer_name) name = raw.customer_name;
   else if (row.customer_id) name = `Customer #${row.customer_id}`;
 
+  const deliveryStatus = statusByNumber[row.number] || 'sent';
+
   let status = 'sent';
   if (row.stop_reminders && row.stop_reason === 'booked') status = 'booked';
   else if (row.stop_reminders) status = 'stopped';
   else if (row.last_inbound_at) status = 'replied';
+  else if (deliveryStatus === 'read') status = 'read';
+  else if (deliveryStatus === 'delivered') status = 'delivered';
+  else if (deliveryStatus === 'failed') status = 'failed';
 
   return {
     number: row.number,

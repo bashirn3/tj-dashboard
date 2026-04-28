@@ -102,7 +102,10 @@ function CustomerList() {
               <option value="">All statuses</option>
               <option value="booked">Booked</option>
               <option value="replied">Replied</option>
+              <option value="read">Read</option>
+              <option value="delivered">Delivered</option>
               <option value="sent">Sent</option>
+              <option value="failed">Failed</option>
               <option value="stopped">Stopped</option>
             </select>
             <select

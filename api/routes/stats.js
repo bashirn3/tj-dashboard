@@ -3,15 +3,13 @@ import { supabase } from '../lib/supabase.js';
 
 const router = Router();
 
-const HISTORICAL_BASELINE = {
-  delivered: 78,
-  read: 61,
-};
-
 router.get('/', async (_req, res) => {
   const [sessionsRes, statusesRes] = await Promise.all([
-    supabase.from('tj_outbound_sessions').select('last_outbound_at, last_inbound_at, stop_reminders, stop_reason'),
-    supabase.from('tj_message_status').select('status, sent_at'),
+    supabase
+      .from('tj_outbound_sessions')
+      .select('last_outbound_at, last_inbound_at, stop_reminders, stop_reason')
+      .neq('stop_reason', 'business_customer'),
+    supabase.from('tj_message_status').select('status, number'),
   ]);
 
   if (sessionsRes.error) {
@@ -21,6 +19,8 @@ router.get('/', async (_req, res) => {
 
   const sessions = sessionsRes.data || [];
   const statuses = statusesRes.data || [];
+
+  const visibleNumbers = new Set(sessions.map((s) => s.number || ''));
 
   const now = new Date();
   const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
@@ -59,15 +59,12 @@ router.get('/', async (_req, res) => {
     }
   }
 
-  let trackedDelivered = 0;
-  let trackedRead = 0;
+  let delivered = 0;
+  let read = 0;
   for (const m of statuses) {
-    if (m.status === 'delivered' || m.status === 'read') trackedDelivered++;
-    if (m.status === 'read') trackedRead++;
+    if (m.status === 'delivered' || m.status === 'read') delivered++;
+    if (m.status === 'read') read++;
   }
-
-  const delivered = Math.max(trackedDelivered, HISTORICAL_BASELINE.delivered);
-  const read = Math.max(trackedRead, HISTORICAL_BASELINE.read);
 
   res.json({
     total: {
