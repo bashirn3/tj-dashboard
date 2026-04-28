@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
   let query = supabase
     .from('tj_outbound_sessions')
     .select('*')
-    .neq('stop_reason', 'business_customer')
+    .or('stop_reason.neq.business_customer,stop_reason.is.null')
     .order('last_outbound_at', { ascending: false });
 
   if (station) {

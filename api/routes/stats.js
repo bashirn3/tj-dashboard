@@ -8,7 +8,7 @@ router.get('/', async (_req, res) => {
     supabase
       .from('tj_outbound_sessions')
       .select('last_outbound_at, last_inbound_at, stop_reminders, stop_reason')
-      .neq('stop_reason', 'business_customer'),
+      .or('stop_reason.neq.business_customer,stop_reason.is.null'),
     supabase.from('tj_message_status').select('status, number'),
   ]);
 
