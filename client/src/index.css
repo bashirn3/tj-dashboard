@@ -25,6 +25,8 @@
   --color-amber-soft: #edd4a1;
   --color-sienna: #8e3a28;
   --color-sienna-soft: #e3bdb1;
+  --color-teal: #2a7f8b;
+  --color-teal-soft: #b3dde3;
 
   --color-primary: #b94f28;
   --color-primary-soft: #e9bfa6;
@@ -62,6 +64,8 @@
     --color-amber-soft: #352c14;
     --color-sienna: #c4614e;
     --color-sienna-soft: #321c16;
+    --color-teal: #5bbfcc;
+    --color-teal-soft: #1a2e30;
 
     --color-primary: #d8714c;
     --color-primary-soft: #3d2518;
