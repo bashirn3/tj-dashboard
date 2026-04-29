@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js';
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const { search, status, station } = req.query;
+  const { search, status, station, campaign } = req.query;
 
   let query = supabase
     .from('tj_outbound_sessions')
@@ -14,6 +14,10 @@ router.get('/', async (req, res) => {
 
   if (station) {
     query = query.eq('station_id', Number(station));
+  }
+
+  if (campaign === 'passed' || campaign === 'due_soon') {
+    query = query.eq('campaign_type', campaign);
   }
 
   if (status === 'replied') {

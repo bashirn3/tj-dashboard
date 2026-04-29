@@ -22,11 +22,17 @@ function CustomerList() {
   const [search, setSearch] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = searchParams.get('status') || '';
+  const campaignFilter = searchParams.get('campaign') || '';
   const sortBy = searchParams.get('sort') || 'last_outbound_at';
 
   const setStatusFilter = (val) => {
     const next = new URLSearchParams(searchParams);
     if (val) next.set('status', val); else next.delete('status');
+    setSearchParams(next, { replace: true });
+  };
+  const setCampaignFilter = (val) => {
+    const next = new URLSearchParams(searchParams);
+    if (val) next.set('campaign', val); else next.delete('campaign');
     setSearchParams(next, { replace: true });
   };
   const setSortBy = (val) => {
@@ -36,8 +42,11 @@ function CustomerList() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', statusFilter],
-    queryFn: () => fetchCustomers({ status: statusFilter || undefined }),
+    queryKey: ['customers', statusFilter, campaignFilter],
+    queryFn: () => fetchCustomers({
+      status: statusFilter || undefined,
+      campaign: campaignFilter || undefined,
+    }),
   });
 
   const customers = data?.customers || [];
@@ -95,6 +104,15 @@ function CustomerList() {
           </div>
           <div className="flex items-center gap-2">
             <select
+              value={campaignFilter}
+              onChange={(e) => setCampaignFilter(e.target.value)}
+              className="rounded-lg border rule bg-[color:var(--color-canvas)] px-3 py-1.5 text-[11px] text-[color:var(--color-ink)] focus:border-[color:var(--color-clay)] focus:outline-none"
+            >
+              <option value="">All campaigns</option>
+              <option value="passed">Passed (lapsed)</option>
+              <option value="due_soon">Due soon</option>
+            </select>
+            <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="rounded-lg border rule bg-[color:var(--color-canvas)] px-3 py-1.5 text-[11px] text-[color:var(--color-ink)] focus:border-[color:var(--color-clay)] focus:outline-none"
@@ -144,6 +162,11 @@ function CustomerList() {
                       {c.name || formatPhone(c.number)}
                     </span>
                     <StatusPill status={c.status} />
+                    {c.campaign_type && (
+                      <span className="text-[10px] uppercase tracking-wider text-[color:var(--color-ink-4)]">
+                        {c.campaign_type === 'passed' ? 'Lapsed' : 'Due Soon'}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-[color:var(--color-ink-4)] truncate">
                     {formatPhone(c.number)}
