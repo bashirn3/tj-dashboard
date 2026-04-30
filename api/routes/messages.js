@@ -6,7 +6,7 @@ const router = Router();
 
 const YCLOUD_API_KEY = process.env.YCLOUD_API_KEY || 'cceca7f729213f2d7dc84082acb63a21';
 const YCLOUD_BASE = 'https://api.ycloud.com/v2';
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 50;
 const MAX_AGE_DAYS = 7;
 
 router.post('/poll', async (_req, res) => {
@@ -15,10 +15,10 @@ router.post('/poll', async (_req, res) => {
   const { data: pending, error } = await supabase
     .from('tj_message_status')
     .select('id, wamid, ycloud_id, number, status, delivered_at')
-    .neq('status', 'read')
+    .in('status', ['sent', 'delivered'])
     .gt('sent_at', cutoff)
     .not('ycloud_id', 'is', null)
-    .order('sent_at', { ascending: true })
+    .order('sent_at', { ascending: false })
     .limit(BATCH_SIZE);
 
   if (error) {
