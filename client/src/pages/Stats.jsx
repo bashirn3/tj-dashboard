@@ -149,23 +149,26 @@ function FeederControl() {
   const queryClient = useQueryClient();
   const [count, setCount] = useState(50);
   const [result, setResult] = useState(null);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(null);
 
   const COST_PER_MSG = 0.06;
 
   const mutation = useMutation({
-    mutationFn: () => triggerFeeder(count),
-    onSuccess: () => {
-      setResult({ ok: true, msg: `Triggered ${count} leads` });
-      setShowConfirm(false);
+    mutationFn: (leadType) => triggerFeeder(count, leadType),
+    onSuccess: (_data, leadType) => {
+      const label = leadType === 'due_soon' ? 'Due Soon' : leadType === 'passed' ? 'Passed' : 'Mixed';
+      setResult({ ok: true, msg: `Triggered ${count} ${label} leads` });
+      setShowConfirm(null);
       queryClient.invalidateQueries({ queryKey: ['stats'] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: (err) => {
       setResult({ ok: false, msg: err.response?.data?.error || err.message });
-      setShowConfirm(false);
+      setShowConfirm(null);
     },
   });
+
+  const typeLabel = showConfirm === 'due_soon' ? 'Due Soon' : showConfirm === 'passed' ? 'Passed' : 'Mixed';
 
   return (
     <section>
@@ -194,16 +197,29 @@ function FeederControl() {
             </label>
             <button
               type="button"
-              onClick={() => setShowConfirm(true)}
+              onClick={() => setShowConfirm('due_soon')}
               disabled={mutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-amber)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
             >
-              {mutation.isPending ? (
+              {mutation.isPending && showConfirm === 'due_soon' ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <Rocket size={14} />
               )}
-              Send
+              Due Soon
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowConfirm('passed')}
+              disabled={mutation.isPending}
+              className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
+            >
+              {mutation.isPending && showConfirm === 'passed' ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Rocket size={14} />
+              )}
+              Passed
             </button>
           </div>
         </div>
@@ -223,9 +239,13 @@ function FeederControl() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
             <div className="card mx-4 w-full max-w-sm px-6 py-5 shadow-xl">
               <h3 className="text-base font-display font-semibold text-[color:var(--color-ink)]">
-                Confirm Campaign
+                Confirm Campaign — {typeLabel}
               </h3>
               <div className="mt-3 space-y-2 text-[13px] text-[color:var(--color-ink-3)]">
+                <div className="flex justify-between">
+                  <span>Type</span>
+                  <span className="font-medium text-[color:var(--color-ink)]">{typeLabel}</span>
+                </div>
                 <div className="flex justify-between">
                   <span>Recipients</span>
                   <span className="font-medium text-[color:var(--color-ink)]">{count} people</span>
@@ -243,19 +263,19 @@ function FeederControl() {
                 </div>
               </div>
               <p className="mt-3 text-[11px] text-[color:var(--color-ink-4)]">
-                This will send WhatsApp template messages to up to {count} new customers. Are you sure?
+                This will send WhatsApp template messages to up to {count} {typeLabel.toLowerCase()} customers. Are you sure?
               </p>
               <div className="mt-4 flex items-center gap-3 justify-end">
                 <button
                   type="button"
-                  onClick={() => setShowConfirm(false)}
+                  onClick={() => setShowConfirm(null)}
                   className="rounded-lg border rule px-4 py-2 text-sm font-medium text-[color:var(--color-ink-3)] transition-colors hover:bg-[color:var(--color-canvas-sunk)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => mutation.mutate()}
+                  onClick={() => mutation.mutate(showConfirm)}
                   disabled={mutation.isPending}
                   className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
                 >

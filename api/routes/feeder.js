@@ -5,7 +5,7 @@ import axios from 'axios';
 const router = Router();
 
 router.post('/trigger', async (req, res) => {
-  const { max_leads_to_send } = req.body;
+  const { max_leads_to_send, lead_type } = req.body;
 
   const webhookUrl = process.env.N8N_FEEDER_WEBHOOK;
   if (!webhookUrl) {
@@ -17,9 +17,12 @@ router.post('/trigger', async (req, res) => {
     return res.status(400).json({ error: 'max_leads_to_send must be 1-500' });
   }
 
+  const validTypes = ['both', 'passed', 'due_soon'];
+  const type = validTypes.includes(lead_type) ? lead_type : 'both';
+
   try {
-    const { data } = await axios.post(webhookUrl, { max_leads_to_send: count }, { timeout: 30_000 });
-    res.json({ ok: true, triggered: count, response: data });
+    const { data } = await axios.post(webhookUrl, { max_leads_to_send: count, lead_type: type }, { timeout: 30_000 });
+    res.json({ ok: true, triggered: count, lead_type: type, response: data });
   } catch (err) {
     console.error('[feeder]', err.message);
     res.status(502).json({ error: 'Failed to trigger feeder', detail: err.message });

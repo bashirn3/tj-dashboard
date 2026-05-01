@@ -30,8 +30,8 @@ export async function stopReminders(phone) {
   return data;
 }
 
-export async function triggerFeeder(maxLeads) {
-  const { data } = await api.post('/feeder/trigger', { max_leads_to_send: maxLeads });
+export async function triggerFeeder(maxLeads, leadType = 'both') {
+  const { data } = await api.post('/feeder/trigger', { max_leads_to_send: maxLeads, lead_type: leadType });
   return data;
 }
 
