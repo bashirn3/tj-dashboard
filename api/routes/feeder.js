@@ -52,4 +52,47 @@ router.get('/status', async (_req, res) => {
   });
 });
 
+router.get('/auto-send', async (_req, res) => {
+  const { data, error } = await supabase
+    .from('tj_config')
+    .select('auto_send_due_soon, auto_send_passed, updated_at')
+    .eq('id', 'main')
+    .maybeSingle();
+
+  if (error) {
+    console.error('[auto-send]', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({
+    auto_send_due_soon: data?.auto_send_due_soon ?? false,
+    auto_send_passed: data?.auto_send_passed ?? false,
+    updated_at: data?.updated_at ?? null,
+  });
+});
+
+router.put('/auto-send', async (req, res) => {
+  const { type, enabled } = req.body;
+
+  if (!['due_soon', 'passed'].includes(type)) {
+    return res.status(400).json({ error: 'type must be "due_soon" or "passed"' });
+  }
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'enabled must be a boolean' });
+  }
+
+  const column = type === 'due_soon' ? 'auto_send_due_soon' : 'auto_send_passed';
+  const { error } = await supabase
+    .from('tj_config')
+    .update({ [column]: enabled, updated_at: new Date().toISOString() })
+    .eq('id', 'main');
+
+  if (error) {
+    console.error('[auto-send]', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ ok: true, [column]: enabled });
+});
+
 export default router;

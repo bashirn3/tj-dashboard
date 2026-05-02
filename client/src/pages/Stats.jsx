@@ -12,8 +12,10 @@ import {
   Activity,
   OctagonX,
   CalendarCheck,
+  Timer,
+  Clock,
 } from 'lucide-react';
-import { fetchStats, triggerFeeder, pollMessageStatuses } from '../lib/api.js';
+import { fetchStats, triggerFeeder, pollMessageStatuses, getAutoSend, setAutoSend } from '../lib/api.js';
 import Skeleton from '../components/ui/Skeleton.jsx';
 
 const BUCKET_META = [
@@ -45,6 +47,7 @@ export default function StatsPage() {
 
       <OutreachVolume />
       <StatusBreakdown />
+      <AutoSendControl />
       <FeederControl />
     </div>
   );
@@ -140,6 +143,111 @@ function StatusBreakdown() {
             </div>
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function Toggle({ enabled, onToggle, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      disabled={disabled}
+      onClick={onToggle}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+        enabled ? 'bg-[color:var(--color-moss)]' : 'bg-[color:var(--color-ink-5)]'
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+          enabled ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  );
+}
+
+function AutoSendControl() {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['auto-send'],
+    queryFn: getAutoSend,
+    refetchInterval: 30_000,
+  });
+
+  const mutation = useMutation({
+    mutationFn: ({ type, enabled }) => setAutoSend(type, enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auto-send'] }),
+  });
+
+  const dueSoonOn = data?.auto_send_due_soon ?? false;
+  const passedOn = data?.auto_send_passed ?? false;
+
+  return (
+    <section>
+      <h2 className="mb-3 text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)]">
+        Auto-send
+      </h2>
+      <div className="card px-5 py-4">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="grid size-9 shrink-0 place-items-center rounded-full border rule text-[color:var(--color-amber)]">
+            <Timer size={16} strokeWidth={1.75} />
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-[color:var(--color-ink)]">Scheduled Outreach</h3>
+            <p className="text-[11px] text-[color:var(--color-ink-4)] mt-0.5">
+              Sends 4 leads every 2 hours from 8:00–18:00. Toggle each type independently.
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="flex gap-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center justify-between rounded-lg border rule px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Clock size={14} className="text-[color:var(--color-amber)]" />
+                <div>
+                  <p className="text-[13px] font-medium text-[color:var(--color-ink)]">Due Soon</p>
+                  <p className="text-[10px] text-[color:var(--color-ink-4)]">Inspection coming up</p>
+                </div>
+              </div>
+              <Toggle
+                enabled={dueSoonOn}
+                disabled={mutation.isPending}
+                onToggle={() => mutation.mutate({ type: 'due_soon', enabled: !dueSoonOn })}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border rule px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Clock size={14} className="text-[color:var(--color-clay)]" />
+                <div>
+                  <p className="text-[13px] font-medium text-[color:var(--color-ink)]">Passed</p>
+                  <p className="text-[10px] text-[color:var(--color-ink-4)]">Oldest lapsed leads</p>
+                </div>
+              </div>
+              <Toggle
+                enabled={passedOn}
+                disabled={mutation.isPending}
+                onToggle={() => mutation.mutate({ type: 'passed', enabled: !passedOn })}
+              />
+            </div>
+          </div>
+        )}
+
+        {(dueSoonOn || passedOn) && (
+          <div className="mt-3 rounded-lg bg-[color:var(--color-moss-soft)] px-3 py-2 text-[11px] font-medium text-[color:var(--color-moss)] flex items-center gap-2">
+            <Activity size={12} />
+            Active — sending {dueSoonOn && passedOn ? 'due soon + passed' : dueSoonOn ? 'due soon' : 'passed'} (4 each, every 2h)
+          </div>
+        )}
       </div>
     </section>
   );

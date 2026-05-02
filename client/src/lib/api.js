@@ -39,3 +39,13 @@ export async function pollMessageStatuses() {
   const { data } = await api.post('/messages/poll');
   return data;
 }
+
+export async function getAutoSend() {
+  const { data } = await api.get('/feeder/auto-send');
+  return data;
+}
+
+export async function setAutoSend(type, enabled) {
+  const { data } = await api.put('/feeder/auto-send', { type, enabled });
+  return data;
+}
