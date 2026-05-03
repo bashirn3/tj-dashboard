@@ -49,3 +49,8 @@ export async function setAutoSend(type, enabled) {
   const { data } = await api.put('/feeder/auto-send', { type, enabled });
   return data;
 }
+
+export async function getFeederProgress(since) {
+  const { data } = await api.get('/feeder/progress', { params: { since } });
+  return data;
+}

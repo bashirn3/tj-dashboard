@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Send,
@@ -15,8 +15,9 @@ import {
   Timer,
   Clock,
 } from 'lucide-react';
-import { fetchStats, triggerFeeder, pollMessageStatuses, getAutoSend, setAutoSend } from '../lib/api.js';
+import { fetchStats, triggerFeeder, pollMessageStatuses, getAutoSend, setAutoSend, getFeederProgress } from '../lib/api.js';
 import Skeleton from '../components/ui/Skeleton.jsx';
+import { ToastContainer, useToast } from '../components/ui/Toast.jsx';
 
 const BUCKET_META = [
   { key: 'today', label: 'Today', hint: 'last 24 hours' },
@@ -34,8 +35,11 @@ const STATUS_CARDS = [
 ];
 
 export default function StatsPage() {
+  const { toasts, addToast, removeToast } = useToast();
+
   return (
     <div className="space-y-6 sm:space-y-8">
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
       <div>
         <h1 className="font-display text-[28px] sm:text-[34px] leading-none font-medium tracking-tight text-balance">
           Stats
@@ -48,7 +52,7 @@ export default function StatsPage() {
       <OutreachVolume />
       <StatusBreakdown />
       <AutoSendControl />
-      <FeederControl />
+      <FeederControl addToast={addToast} />
     </div>
   );
 }
@@ -253,29 +257,101 @@ function AutoSendControl() {
   );
 }
 
-function FeederControl() {
+const POLL_INTERVAL = 5_000;
+const POLL_TIMEOUT = 5 * 60 * 1000;
+
+function FeederControl({ addToast }) {
   const queryClient = useQueryClient();
   const [count, setCount] = useState(50);
   const [result, setResult] = useState(null);
   const [showConfirm, setShowConfirm] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const pollRef = useRef(null);
+  const triggerTimeRef = useRef(null);
 
   const COST_PER_MSG = 0.06;
 
-  const mutation = useMutation({
-    mutationFn: (leadType) => triggerFeeder(count, leadType),
-    onSuccess: (_data, leadType) => {
-      const label = leadType === 'due_soon' ? 'Due Soon' : leadType === 'passed' ? 'Passed' : 'Mixed';
-      setResult({ ok: true, msg: `Triggered ${count} ${label} leads` });
-      setShowConfirm(null);
-      queryClient.invalidateQueries({ queryKey: ['stats'] });
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-    },
-    onError: (err) => {
-      setResult({ ok: false, msg: err.response?.data?.error || err.message });
-      setShowConfirm(null);
-    },
-  });
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
 
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  const startPolling = useCallback((triggerTime, leadLabel) => {
+    const startedAt = Date.now();
+    let lastCount = 0;
+    let stableChecks = 0;
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const { new_sessions } = await getFeederProgress(triggerTime);
+
+        if (new_sessions > 0) {
+          setProgress(`Sending... ${new_sessions} lead${new_sessions !== 1 ? 's' : ''} queued`);
+        }
+
+        if (new_sessions > 0 && new_sessions === lastCount) {
+          stableChecks++;
+        } else {
+          stableChecks = 0;
+        }
+        lastCount = new_sessions;
+
+        if (stableChecks >= 3 && new_sessions > 0) {
+          stopPolling();
+          setScanning(false);
+          setProgress(null);
+          setResult({ ok: true, msg: `Done! ${new_sessions} new lead${new_sessions !== 1 ? 's' : ''} sent (${leadLabel})` });
+          addToast(`${new_sessions} new ${leadLabel} lead${new_sessions !== 1 ? 's' : ''} sent`, 'success');
+          queryClient.invalidateQueries({ queryKey: ['stats'] });
+          queryClient.invalidateQueries({ queryKey: ['customers'] });
+          return;
+        }
+
+        if (Date.now() - startedAt > POLL_TIMEOUT) {
+          stopPolling();
+          setScanning(false);
+          setProgress(null);
+          if (new_sessions > 0) {
+            setResult({ ok: true, msg: `${new_sessions} lead${new_sessions !== 1 ? 's' : ''} sent so far. Processing may still be running.` });
+            addToast(`${new_sessions} leads sent. May still be processing.`, 'info');
+          } else {
+            setResult({ ok: true, msg: 'Scan complete — no new eligible leads found.' });
+            addToast('Scan complete — no new eligible leads.', 'info');
+          }
+          queryClient.invalidateQueries({ queryKey: ['stats'] });
+        }
+      } catch {
+        // ignore polling errors, keep trying
+      }
+    }, POLL_INTERVAL);
+  }, [stopPolling, addToast, queryClient]);
+
+  const handleTrigger = useCallback(async (leadType) => {
+    const label = leadType === 'due_soon' ? 'Due Soon' : leadType === 'passed' ? 'Passed' : 'Mixed';
+    setShowConfirm(null);
+    setResult(null);
+    setScanning(true);
+    setProgress('Scanning leads...');
+
+    try {
+      const { triggered_at } = await triggerFeeder(count, leadType);
+      triggerTimeRef.current = triggered_at;
+      startPolling(triggered_at, label);
+    } catch (err) {
+      setScanning(false);
+      setProgress(null);
+      const msg = err.response?.data?.error || err.message;
+      setResult({ ok: false, msg });
+      addToast(`Failed to trigger feeder: ${msg}`, 'error');
+    }
+  }, [count, startPolling, addToast]);
+
+  const isRunning = scanning;
   const typeLabel = showConfirm === 'due_soon' ? 'Due Soon' : showConfirm === 'passed' ? 'Passed' : 'Mixed';
 
   return (
@@ -300,16 +376,17 @@ function FeederControl() {
                 max={500}
                 value={count}
                 onChange={(e) => setCount(Number(e.target.value))}
-                className="w-20 rounded-lg border rule bg-[color:var(--color-canvas)] px-3 py-1.5 text-sm text-[color:var(--color-ink)] focus:border-[color:var(--color-clay)] focus:outline-none"
+                disabled={isRunning}
+                className="w-20 rounded-lg border rule bg-[color:var(--color-canvas)] px-3 py-1.5 text-sm text-[color:var(--color-ink)] focus:border-[color:var(--color-clay)] focus:outline-none disabled:opacity-50"
               />
             </label>
             <button
               type="button"
               onClick={() => setShowConfirm('due_soon')}
-              disabled={mutation.isPending}
+              disabled={isRunning}
               className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-amber)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
             >
-              {mutation.isPending && showConfirm === 'due_soon' ? (
+              {isRunning ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <Rocket size={14} />
@@ -319,10 +396,10 @@ function FeederControl() {
             <button
               type="button"
               onClick={() => setShowConfirm('passed')}
-              disabled={mutation.isPending}
+              disabled={isRunning}
               className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
             >
-              {mutation.isPending && showConfirm === 'passed' ? (
+              {isRunning ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <Rocket size={14} />
@@ -331,7 +408,15 @@ function FeederControl() {
             </button>
           </div>
         </div>
-        {result && (
+
+        {progress && (
+          <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-[11px] font-medium text-blue-700 flex items-center gap-2">
+            <Loader2 size={12} className="animate-spin" />
+            {progress}
+          </div>
+        )}
+
+        {result && !progress && (
           <div
             className={`mt-3 rounded-lg px-3 py-2 text-[11px] font-medium ${
               result.ok
@@ -383,15 +468,11 @@ function FeederControl() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => mutation.mutate(showConfirm)}
-                  disabled={mutation.isPending}
+                  onClick={() => handleTrigger(showConfirm)}
+                  disabled={isRunning}
                   className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
                 >
-                  {mutation.isPending ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Send size={14} />
-                  )}
+                  <Send size={14} />
                   Confirm Send
                 </button>
               </div>

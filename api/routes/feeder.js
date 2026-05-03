@@ -21,12 +21,33 @@ router.post('/trigger', async (req, res) => {
   const type = validTypes.includes(lead_type) ? lead_type : 'both';
 
   try {
-    const { data } = await axios.post(webhookUrl, { max_leads_to_send: count, lead_type: type }, { timeout: 30_000 });
-    res.json({ ok: true, triggered: count, lead_type: type, response: data });
+    axios.post(webhookUrl, { max_leads_to_send: count, lead_type: type }, { timeout: 300_000 })
+      .catch(err => console.error('[feeder-bg]', err.message));
+
+    res.json({ ok: true, triggered: count, lead_type: type, triggered_at: new Date().toISOString() });
   } catch (err) {
     console.error('[feeder]', err.message);
     res.status(502).json({ error: 'Failed to trigger feeder', detail: err.message });
   }
+});
+
+router.get('/progress', async (req, res) => {
+  const { since } = req.query;
+  if (!since) {
+    return res.status(400).json({ error: 'since query param required (ISO timestamp)' });
+  }
+
+  const { count, error } = await supabase
+    .from('tj_outbound_sessions')
+    .select('*', { count: 'exact', head: true })
+    .gt('last_outbound_at', since);
+
+  if (error) {
+    console.error('[feeder-progress]', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ new_sessions: count || 0, since });
 });
 
 router.get('/status', async (_req, res) => {
