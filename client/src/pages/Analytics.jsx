@@ -55,10 +55,10 @@ function PageHeader({ generatedAt, doris }) {
     <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 className="font-display text-[32px] leading-none font-medium tracking-tight sm:text-[40px]">
-          Campaign Results
+          Analytics
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-[color:var(--color-ink-3)]">
-          Clear proof of what happened after WhatsApp messages were sent.
+          Customer replies and DORIS bookings after outreach.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--color-ink-4)]">
@@ -76,7 +76,7 @@ function ResultCards({ summary }) {
     { label: 'Replied', value: summary.replied, icon: MessageCircle, tone: 'amber' },
     { label: 'Bot booked', value: summary.botBooked, icon: CalendarCheck, tone: 'moss' },
     {
-      label: 'Booked after WhatsApp',
+      label: 'DORIS bookings',
       value: summary.bookingsAfterWhatsApp,
       icon: CheckCheck,
       tone: 'moss',
@@ -112,31 +112,30 @@ function SidePanel({ summary, timing }) {
       <div className="card p-5">
         <h2 className="text-sm font-medium">What counts here?</h2>
         <p className="mt-2 text-[12px] leading-5 text-[color:var(--color-ink-3)]">
-          A booking is counted when WhatsApp was sent first, then DORIS later shows a booking for
-          the same registration.
+          Bookings created in DORIS after a message was sent for the same registration.
         </p>
         <div className="mt-4 rounded-xl bg-[color:var(--color-canvas-sunk)] p-4">
           <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-            Total bookings influenced
+            Matched bookings
           </p>
           <p className="mt-2 font-display text-[52px] leading-none text-[color:var(--color-moss)]">
             {formatNumber(summary.totalAttributedBookings)}
           </p>
           <p className="mt-2 text-[12px] text-[color:var(--color-ink-3)]">
             {formatNumber(summary.botBooked)} by bot +{' '}
-            {formatNumber(summary.bookingsAfterWhatsApp)} after WhatsApp.
+            {formatNumber(summary.bookingsAfterWhatsApp)} matched in DORIS.
           </p>
         </div>
       </div>
 
       <div className="card p-5">
-        <h2 className="text-sm font-medium">Silent conversion split</h2>
+        <h2 className="text-sm font-medium">Booking reply split</h2>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <SmallNumber label="Replied first" value={summary.bookingsAfterWhatsAppReplied} tone="amber" />
-          <SmallNumber label="Booked silently" value={summary.bookingsAfterWhatsAppSilent} tone="moss" />
+          <SmallNumber label="Replied before booking" value={summary.bookingsAfterWhatsAppReplied} tone="amber" />
+          <SmallNumber label="No reply before booking" value={summary.bookingsAfterWhatsAppSilent} tone="moss" />
         </div>
         <p className="mt-3 text-[12px] leading-5 text-[color:var(--color-ink-3)]">
-          Most people who booked after WhatsApp did not reply in chat.
+          Based on whether the customer replied before the matched DORIS booking.
         </p>
       </div>
 
@@ -160,9 +159,9 @@ function BookingsTable({ bookings }) {
       <div className="border-b rule px-5 py-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-medium">The 19 Bookings After WhatsApp</h2>
+            <h2 className="text-sm font-medium">DORIS Bookings After Outreach</h2>
             <p className="mt-1 text-[12px] text-[color:var(--color-ink-3)]">
-              These are the people who received WhatsApp, then later had a matching DORIS booking.
+              Bookings created in DORIS after outreach for the same registration.
             </p>
           </div>
           <Badge tone="moss">{bookings.length} bookings</Badge>
@@ -205,7 +204,7 @@ function BookingsTable({ bookings }) {
                 </td>
                 <td className="px-3 py-3">
                   <Badge tone={booking.customerReplied ? 'amber' : 'teal'}>
-                    {booking.customerReplied ? 'Replied' : 'Silent'}
+                    {booking.customerReplied ? 'Replied' : 'No reply'}
                   </Badge>
                 </td>
                 <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.appointmentLocal}</td>
@@ -227,9 +226,9 @@ function SendTimesTable({ windows }) {
   return (
     <section className="card overflow-hidden">
       <div className="border-b rule px-5 py-4">
-        <h2 className="text-sm font-medium">Best Send Times</h2>
+        <h2 className="text-sm font-medium">Send-Time Performance</h2>
         <p className="mt-1 text-[12px] text-[color:var(--color-ink-3)]">
-          Simple view of when messages got replies and bookings.
+          Message volume, replies, and matched DORIS bookings by send window.
         </p>
       </div>
 
