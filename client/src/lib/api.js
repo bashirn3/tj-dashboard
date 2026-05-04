@@ -10,6 +10,11 @@ export async function fetchStats() {
   return data;
 }
 
+export async function fetchAnalytics() {
+  const { data } = await api.get('/analytics');
+  return data;
+}
+
 export async function fetchCustomers(params) {
   const { data } = await api.get('/customers', { params });
   return data;

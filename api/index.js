@@ -2,6 +2,7 @@ import './lib/env.js';
 import express from 'express';
 import cors from 'cors';
 import statsRouter from './routes/stats.js';
+import analyticsRouter from './routes/analytics.js';
 import customersRouter from './routes/customers.js';
 import chatRouter from './routes/chat.js';
 import feederRouter from './routes/feeder.js';
@@ -19,6 +20,7 @@ app.use((_req, res, next) => {
 const api = express.Router();
 api.get('/health', (_req, res) => res.json({ ok: true }));
 api.use('/stats', statsRouter);
+api.use('/analytics', analyticsRouter);
 api.use('/customers', customersRouter);
 api.use('/chat', chatRouter);
 api.use('/feeder', feederRouter);
