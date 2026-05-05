@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link, useLocation } from 'react-router-dom';
 import {
   BarChart3,
   CalendarCheck,
@@ -21,6 +22,7 @@ const PERIODS = [
 ];
 
 export default function StatsPage() {
+  const location = useLocation();
   const [bookingView, setBookingView] = useState('chart');
   const [bookingSort, setBookingSort] = useState('desc');
   const [sendView, setSendView] = useState('chart');
@@ -48,8 +50,9 @@ export default function StatsPage() {
   const analytics = analyticsQuery.data || {};
   const summary = analytics.summary || {};
   const bookings = analytics.bookingsAfterWhatsApp || [];
-  const sendWindows = analytics.bestSendWindows || [];
+  const sendWindows = analytics.sendTimePerformance || analytics.bestSendWindows || [];
   const loading = statsQuery.isLoading || analyticsQuery.isLoading;
+  const returnTo = `${location.pathname}${location.search}`;
 
   const sortedBookings = useMemo(() => {
     return [...bookings].sort((a, b) => {
@@ -105,6 +108,7 @@ export default function StatsPage() {
               bookings={sortedBookings}
               sort={bookingSort}
               onSortChange={setBookingSort}
+              returnTo={returnTo}
             />
           )}
         </Panel>
@@ -265,6 +269,8 @@ function ViewToggle({ value, onChange, firstLabel, secondLabel }) {
 function BookingsChart({ rows, bookings }) {
   const max = Math.max(...rows.map((row) => row.count), 1);
   const replied = bookings.filter((booking) => booking.customerReplied).length;
+  const timeBuckets = buildTimeAfterBuckets(bookings);
+  const maxBucket = Math.max(...timeBuckets.map((bucket) => bucket.count), 1);
 
   return (
     <div className="p-5">
@@ -273,25 +279,80 @@ function BookingsChart({ rows, bookings }) {
         <CompactStat label="Replied before booking" value={replied} tone="amber" />
         <CompactStat label="No reply before booking" value={bookings.length - replied} tone="teal" />
       </div>
-      <div className="mt-5 space-y-3">
-        {rows.map((row) => (
-          <div key={row.key} className="grid grid-cols-[88px_1fr_34px] items-center gap-3">
-            <span className="text-[11px] text-[color:var(--color-ink-4)]">{row.label}</span>
-            <div className="h-8 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
-              <div
-                className="h-full rounded-lg bg-[color:var(--color-moss)] transition-[width] duration-200"
-                style={{ width: `${Math.max((row.count / max) * 100, 4)}%` }}
-              />
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
+              By booking date
+            </p>
+            <div className="flex items-center gap-3 text-[10px] text-[color:var(--color-ink-4)]">
+              <LegendDot tone="amber" label="Due soon" />
+              <LegendDot tone="clay" label="Passed" />
+              <LegendDot tone="teal" label="Other" />
             </div>
-            <span className="text-right text-[12px] font-medium tabular-nums">{row.count}</span>
           </div>
-        ))}
+          <div className="space-y-3">
+            {rows.map((row) => (
+              <div key={row.key} className="grid grid-cols-[88px_1fr_34px] items-center gap-3">
+                <span className="text-[11px] text-[color:var(--color-ink-4)]">{row.label}</span>
+                <div className="flex h-8 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
+                  <Segment value={row.dueSoon} total={row.count} max={max} color="var(--color-amber)" />
+                  <Segment value={row.passed} total={row.count} max={max} color="var(--color-clay)" />
+                  <Segment value={row.other} total={row.count} max={max} color="var(--color-teal)" />
+                </div>
+                <span className="text-right text-[12px] font-medium tabular-nums">{row.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
+            Time from message to booking
+          </p>
+          <div className="space-y-3">
+            {timeBuckets.map((bucket) => (
+              <div key={bucket.key} className="grid grid-cols-[64px_1fr_26px] items-center gap-3">
+                <span className="text-[11px] text-[color:var(--color-ink-4)]">{bucket.label}</span>
+                <div className="h-7 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
+                  <div
+                    className="h-full rounded-lg bg-[color:var(--color-moss)] transition-[width] duration-200"
+                    style={{ width: `${Math.max((bucket.count / maxBucket) * 100, bucket.count ? 6 : 0)}%` }}
+                  />
+                </div>
+                <span className="text-right text-[12px] font-medium tabular-nums">{bucket.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function BookingsTable({ bookings, sort, onSortChange }) {
+function Segment({ value, total, max, color }) {
+  if (!value) return null;
+  return (
+    <div
+      className="h-full transition-[width] duration-200"
+      style={{
+        width: `${(value / total) * Math.max((total / max) * 100, 4)}%`,
+        backgroundColor: color,
+      }}
+    />
+  );
+}
+
+function LegendDot({ tone, label }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="size-2 rounded-full" style={{ backgroundColor: `var(--color-${tone})` }} />
+      {label}
+    </span>
+  );
+}
+
+function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
   return (
     <div>
       <TableToolbar
@@ -300,10 +361,11 @@ function BookingsTable({ bookings, sort, onSortChange }) {
         onSortToggle={() => onSortChange(sort === 'desc' ? 'asc' : 'desc')}
       />
       <div className="overflow-x-auto">
-        <table className="min-w-[1040px] w-full text-left text-[12px]">
+        <table className="min-w-[1120px] w-full text-left text-[12px]">
           <thead className="bg-[color:var(--color-canvas-sunk)]/70 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-ink-4)]">
             <tr>
               <th className="px-5 py-3 font-medium">Customer</th>
+              <th className="px-3 py-3 font-medium">Campaign</th>
               <th className="px-3 py-3 font-medium">Car</th>
               <th className="px-3 py-3 font-medium">Message sent</th>
               <th className="px-3 py-3 font-medium">DORIS booking</th>
@@ -317,12 +379,21 @@ function BookingsTable({ bookings, sort, onSortChange }) {
             {bookings.map((booking) => (
               <tr key={`${booking.saleId}-${booking.registration}-${booking.customer_id}`} className="hover:bg-[color:var(--color-canvas-sunk)]/45">
                 <td className="px-5 py-3">
-                  <div className="font-medium text-[color:var(--color-ink)]">{booking.name}</div>
+                  <Link
+                    to={`/customers/${booking.number}`}
+                    state={{ returnTo }}
+                    className="font-medium text-[color:var(--color-ink)] transition-colors hover:text-[color:var(--color-clay)]"
+                  >
+                    {booking.name}
+                  </Link>
                   {booking.dorisName && booking.dorisName !== booking.name && (
                     <div className="mt-0.5 text-[10px] text-[color:var(--color-ink-4)]">
                       DORIS: {booking.dorisName}
                     </div>
                   )}
+                </td>
+                <td className="px-3 py-3">
+                  <CampaignBadge type={booking.campaignType} />
                 </td>
                 <td className="px-3 py-3">
                   <div className="font-mono text-[11px]">{booking.registration}</div>
@@ -358,6 +429,8 @@ function BookingsTable({ bookings, sort, onSortChange }) {
 }
 
 function BookingSummary({ summary }) {
+  const byCampaign = summary.bookingsAfterWhatsAppByCampaign || {};
+
   return (
     <aside className="space-y-4">
       <div className="card p-5">
@@ -377,7 +450,15 @@ function BookingSummary({ summary }) {
       </div>
 
       <div className="card p-5">
-        <h2 className="text-sm font-medium">Booking reply split</h2>
+        <h2 className="text-sm font-medium">Campaign split</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <CompactStat label="Due soon" value={byCampaign.due_soon || 0} tone="amber" />
+          <CompactStat label="Passed" value={byCampaign.passed || 0} tone="clay" />
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="text-sm font-medium">Reply split</h2>
         <div className="mt-4 grid grid-cols-2 gap-3">
           <CompactStat label="Replied before booking" value={summary.bookingsAfterWhatsAppReplied} tone="amber" />
           <CompactStat label="No reply before booking" value={summary.bookingsAfterWhatsAppSilent} tone="teal" />
@@ -388,32 +469,89 @@ function BookingSummary({ summary }) {
 }
 
 function SendTimeChart({ rows }) {
-  const maxReplyRate = Math.max(...rows.map((row) => row.replyRate || 0), 1);
+  const heatmap = buildSendHeatmap(rows);
+  const maxSent = Math.max(...rows.map((row) => row.sent || 0), 1);
 
   return (
     <div className="p-5">
-      <div className="space-y-3">
-        {rows.map((row) => (
-          <div key={row.key} className="grid gap-2 sm:grid-cols-[92px_1fr_170px] sm:items-center">
-            <div>
-              <p className="font-medium">{row.key}:00</p>
-              <p className="text-[10px] text-[color:var(--color-ink-4)]">{row.sent} sent</p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
+          Weekday / hour heatmap
+        </p>
+        <div className="flex items-center gap-3 text-[10px] text-[color:var(--color-ink-4)]">
+          <LegendDot tone="amber" label="Replies" />
+          <LegendDot tone="moss" label="Matched bookings" />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <div
+          className="grid min-w-[720px] gap-2"
+          style={{ gridTemplateColumns: `72px repeat(${heatmap.hours.length}, minmax(58px, 1fr))` }}
+        >
+          <div />
+          {heatmap.hours.map((hour) => (
+            <div key={hour} className="text-center text-[10px] text-[color:var(--color-ink-4)]">
+              {hour}:00
             </div>
-            <div className="h-8 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
-              <div
-                className="h-full rounded-lg bg-[color:var(--color-amber)] transition-[width] duration-200"
-                style={{ width: `${Math.max(((row.replyRate || 0) / maxReplyRate) * 100, 3)}%` }}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
+          ))}
+          {heatmap.days.map((day) => (
+            <HeatmapRow key={day} day={day} hours={heatmap.hours} rows={heatmap.byDayHour} maxSent={maxSent} />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-2 sm:grid-cols-4">
+        {rows.slice(0, 4).map((row) => (
+          <div key={row.key} className="rounded-xl border rule bg-[color:var(--color-canvas-sunk)]/45 p-3">
+            <p className="font-medium">{row.key}:00</p>
+            <div className="mt-2 grid grid-cols-3 gap-1 text-center">
+              <MiniMetric label="Sent" value={row.sent} />
               <MiniMetric label="Replies" value={row.replied} />
-              <MiniMetric label="Rate" value={formatPercent(row.replyRate)} />
               <MiniMetric label="Bookings" value={row.totalAttributedBookings} tone="moss" />
             </div>
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+function HeatmapRow({ day, hours, rows, maxSent }) {
+  return (
+    <>
+      <div className="flex items-center text-[11px] font-medium text-[color:var(--color-ink-3)]">{day}</div>
+      {hours.map((hour) => {
+        const row = rows.get(`${day} ${hour}`);
+        const intensity = row ? Math.max(row.sent / maxSent, 0.08) : 0;
+        return (
+          <div
+            key={`${day}-${hour}`}
+            className="min-h-16 rounded-xl border rule p-2 transition-colors duration-150 hover:border-[color:var(--color-rule-strong)]"
+            style={{
+              backgroundColor: row
+                ? `color-mix(in srgb, var(--color-amber) ${Math.round(intensity * 24)}%, var(--color-canvas-raised))`
+                : 'var(--color-canvas-sunk)',
+            }}
+          >
+            {row ? (
+              <>
+                <div className="text-[12px] font-medium tabular-nums">{row.sent}</div>
+                <div className="mt-1 flex items-center justify-between text-[10px]">
+                  <span className="text-[color:var(--color-amber)]">{row.replied} r</span>
+                  <span className="text-[color:var(--color-moss)]">{row.totalAttributedBookings} b</span>
+                </div>
+                <div className="mt-1 text-[9px] text-[color:var(--color-ink-4)]">
+                  {formatPercent(row.replyRate)}
+                </div>
+              </>
+            ) : (
+              <span className="text-[10px] text-[color:var(--color-ink-5)]">—</span>
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -498,6 +636,12 @@ function MiniMetric({ label, value, tone }) {
   );
 }
 
+function CampaignBadge({ type }) {
+  if (type === 'due_soon') return <Badge tone="amber">Due soon</Badge>;
+  if (type === 'passed') return <Badge tone="clay">Passed</Badge>;
+  return <Badge tone="neutral">Other</Badge>;
+}
+
 function StatsSkeleton() {
   return (
     <div className="space-y-6">
@@ -517,10 +661,62 @@ function buildBookingChartRows(bookings) {
   const grouped = new Map();
   for (const booking of bookings) {
     const key = dateKey(booking.dorisBookingCreatedAt);
-    if (!grouped.has(key)) grouped.set(key, { key, label: shortDate(booking.dorisBookingCreatedAt), count: 0 });
-    grouped.get(key).count++;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        key,
+        label: shortDate(booking.dorisBookingCreatedAt),
+        count: 0,
+        dueSoon: 0,
+        passed: 0,
+        other: 0,
+      });
+    }
+    const row = grouped.get(key);
+    row.count++;
+    if (booking.campaignType === 'due_soon') row.dueSoon++;
+    else if (booking.campaignType === 'passed') row.passed++;
+    else row.other++;
   }
   return Array.from(grouped.values()).sort((a, b) => new Date(b.key) - new Date(a.key));
+}
+
+function buildTimeAfterBuckets(bookings) {
+  const buckets = [
+    { key: 'under_1h', label: '<1h', count: 0, test: (minutes) => minutes < 60 },
+    { key: '1_6h', label: '1-6h', count: 0, test: (minutes) => minutes >= 60 && minutes < 360 },
+    { key: '6_24h', label: '6-24h', count: 0, test: (minutes) => minutes >= 360 && minutes < 1440 },
+    { key: '1_3d', label: '1-3d', count: 0, test: (minutes) => minutes >= 1440 && minutes < 4320 },
+    { key: '3d_plus', label: '3d+', count: 0, test: (minutes) => minutes >= 4320 },
+  ];
+
+  for (const booking of bookings) {
+    const minutes = booking.minutesAfterWhatsApp;
+    const bucket = buckets.find((item) => item.test(minutes));
+    if (bucket) bucket.count++;
+  }
+
+  return buckets;
+}
+
+function buildSendHeatmap(rows) {
+  const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const byDayHour = new Map();
+  const hours = new Set();
+  const days = new Set();
+
+  for (const row of rows) {
+    const [day, hour] = String(row.key || '').split(' ');
+    if (!day || !hour) continue;
+    hours.add(hour);
+    days.add(day);
+    byDayHour.set(`${day} ${hour}`, row);
+  }
+
+  return {
+    days: dayOrder.filter((day) => days.has(day)),
+    hours: Array.from(hours).sort((a, b) => Number(a) - Number(b)),
+    byDayHour,
+  };
 }
 
 function dateKey(value) {

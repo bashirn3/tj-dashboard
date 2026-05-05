@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Search,
   ChevronRight,
@@ -19,26 +18,28 @@ export default function CustomersPage() {
 }
 
 function CustomerList() {
-  const [search, setSearch] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const search = searchParams.get('search') || '';
   const statusFilter = searchParams.get('status') || '';
   const campaignFilter = searchParams.get('campaign') || '';
   const sortBy = searchParams.get('sort') || 'last_outbound_at';
 
-  const setStatusFilter = (val) => {
+  const updateParam = (key, val, defaultValue = '') => {
     const next = new URLSearchParams(searchParams);
-    if (val) next.set('status', val); else next.delete('status');
+    if (val && val !== defaultValue) next.set(key, val); else next.delete(key);
     setSearchParams(next, { replace: true });
+  };
+
+  const setSearch = (val) => updateParam('search', val);
+  const setStatusFilter = (val) => {
+    updateParam('status', val);
   };
   const setCampaignFilter = (val) => {
-    const next = new URLSearchParams(searchParams);
-    if (val) next.set('campaign', val); else next.delete('campaign');
-    setSearchParams(next, { replace: true });
+    updateParam('campaign', val);
   };
   const setSortBy = (val) => {
-    const next = new URLSearchParams(searchParams);
-    if (val && val !== 'last_outbound_at') next.set('sort', val); else next.delete('sort');
-    setSearchParams(next, { replace: true });
+    updateParam('sort', val, 'last_outbound_at');
   };
 
   const { data, isLoading } = useQuery({
@@ -151,6 +152,7 @@ function CustomerList() {
               <Link
                 key={c.number}
                 to={`/customers/${c.number}`}
+                state={{ returnTo: `${location.pathname}${location.search}` }}
                 className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[color:var(--color-canvas-sunk)]/60"
               >
                 <div className="size-9 rounded-full bg-[color:var(--color-canvas-sunk)] grid place-items-center text-[color:var(--color-ink-4)]">

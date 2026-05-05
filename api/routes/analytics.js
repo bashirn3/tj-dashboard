@@ -63,6 +63,7 @@ async function buildAnalytics() {
 
   const directBookings = attributedBookings.filter((booking) => booking.kind === 'doris_after_whatsapp');
   const repliedBookings = directBookings.filter((booking) => booking.customerReplied).length;
+  const bookingsByCampaign = countBy(directBookings, (booking) => booking.campaignType || 'unknown');
   const botBooked = rows.filter((row) => row.botBooked).length;
   const sendTimePerformance = buildSendTimePerformance(rows, directBookings);
   const replyTiming = buildReplyTiming(rows);
@@ -79,6 +80,7 @@ async function buildAnalytics() {
       bookingsAfterWhatsApp: directBookings.length,
       bookingsAfterWhatsAppReplied: repliedBookings,
       bookingsAfterWhatsAppSilent: directBookings.length - repliedBookings,
+      bookingsAfterWhatsAppByCampaign: bookingsByCampaign,
       highConfidenceBookings: directBookings.filter((booking) => booking.confidence === 'high').length,
       reviewBookings: directBookings.filter((booking) => booking.confidence !== 'high').length,
       totalAttributedBookings: botBooked + directBookings.length,
@@ -194,6 +196,7 @@ async function findAttributedBookings(sessions) {
           source,
           eventType: event.eventType,
           stopReason: session.stop_reason || 'active',
+          campaignType: session.campaign_type || outbound.campaign_type || '',
           sendDayHour: dayHourKey(session.last_outbound_at),
         });
       }
@@ -338,6 +341,14 @@ function buildReplyTiming(rows) {
       .sort((a, b) => b.replies - a.replies)
       .slice(0, 12),
   };
+}
+
+function countBy(rows, getKey) {
+  return rows.reduce((acc, row) => {
+    const key = getKey(row);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
 }
 
 function eventRegistration(event) {

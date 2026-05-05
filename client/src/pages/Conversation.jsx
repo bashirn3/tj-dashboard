@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useLocation, useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Phone, OctagonX, Clock, Send, MessageSquareReply, Loader2, Info, X } from 'lucide-react';
 import { fetchCustomer, fetchChat, stopReminders } from '../lib/api.js';
@@ -10,8 +10,10 @@ import Skeleton from '../components/ui/Skeleton.jsx';
 
 export default function ConversationPage() {
   const { phone } = useParams();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [showInfo, setShowInfo] = useState(false);
+  const returnTo = location.state?.returnTo || '/';
 
   const customerQ = useQuery({ queryKey: ['customer', phone], queryFn: () => fetchCustomer(phone) });
   const chatQ = useQuery({ queryKey: ['chat', phone], queryFn: () => fetchChat(phone) });
@@ -30,7 +32,7 @@ export default function ConversationPage() {
     <div className="flex flex-col h-[calc(100dvh-48px)] sm:h-[calc(100dvh-56px)]">
       <div className="border-b rule bg-[color:var(--color-canvas)]/80 backdrop-blur-sm px-4 sm:px-6 py-2.5 flex items-center gap-3">
         <Link
-          to="/"
+          to={returnTo}
           className="grid size-8 place-items-center rounded-full border rule text-[color:var(--color-ink-3)] hover:text-[color:var(--color-ink)] hover:border-[color:var(--color-rule-strong)] transition-colors"
         >
           <ArrowLeft size={16} strokeWidth={1.75} />
