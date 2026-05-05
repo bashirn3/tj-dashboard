@@ -3,7 +3,7 @@ import Shell from './components/layout/Shell.jsx';
 import CustomersPage from './pages/Overview.jsx';
 import ConversationPage from './pages/Conversation.jsx';
 import StatsPage from './pages/Stats.jsx';
-import AnalyticsPage from './pages/Analytics.jsx';
+import SettingsPage from './pages/Settings.jsx';
 
 export default function App() {
   return (
@@ -11,7 +11,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<CustomersPage />} />
         <Route path="/stats" element={<StatsPage />} />
-        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/analytics" element={<Navigate to="/stats" replace />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/customers/:phone" element={<ConversationPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

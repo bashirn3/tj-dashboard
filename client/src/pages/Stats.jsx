@@ -1,67 +1,41 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  Send,
-  MessageSquareReply,
-  Percent,
-  Rocket,
-  Loader2,
-  Users,
+  BarChart3,
+  CalendarCheck,
   CheckCheck,
   Eye,
-  Activity,
-  OctagonX,
-  CalendarCheck,
-  Timer,
-  Clock,
+  MessageSquareReply,
+  Send,
+  Table2,
 } from 'lucide-react';
-import { fetchStats, triggerFeeder, pollMessageStatuses, getAutoSend, setAutoSend, getFeederProgress } from '../lib/api.js';
+import { fetchAnalytics, fetchStats, pollMessageStatuses } from '../lib/api.js';
+import Badge from '../components/ui/Badge.jsx';
+import EmptyState from '../components/ui/EmptyState.jsx';
 import Skeleton from '../components/ui/Skeleton.jsx';
-import { ToastContainer, useToast } from '../components/ui/Toast.jsx';
 
-const BUCKET_META = [
-  { key: 'today', label: 'Today', hint: 'last 24 hours' },
-  { key: 'week', label: 'This week', hint: 'last 7 days' },
-  { key: 'month', label: 'This month', hint: 'last 30 days' },
-];
-
-const STATUS_CARDS = [
-  { key: 'sent', label: 'Sent', icon: Send, tone: 'clay' },
-  { key: 'delivered', label: 'Delivered', icon: CheckCheck, tone: 'amber' },
-  { key: 'read', label: 'Read', icon: Eye, tone: 'moss' },
-  { key: 'replied', label: 'Replied', icon: MessageSquareReply, tone: 'amber' },
-  { key: 'booked', label: 'Booked', icon: CalendarCheck, tone: 'moss' },
-  { key: 'replyRate', label: 'Reply Rate', icon: Percent, tone: 'amber', suffix: '%' },
+const PERIODS = [
+  { key: 'today', label: 'Today', hint: 'calendar day' },
+  { key: 'week', label: 'This week', hint: 'Mon-Sun' },
+  { key: 'month', label: 'This month', hint: 'calendar month' },
 ];
 
 export default function StatsPage() {
-  const { toasts, addToast, removeToast } = useToast();
+  const [bookingView, setBookingView] = useState('chart');
+  const [bookingSort, setBookingSort] = useState('desc');
+  const [sendView, setSendView] = useState('chart');
+  const [sendSort, setSendSort] = useState('desc');
 
-  return (
-    <div className="space-y-6 sm:space-y-8">
-      <ToastContainer toasts={toasts} removeToast={removeToast} />
-      <div>
-        <h1 className="font-display text-[28px] sm:text-[34px] leading-none font-medium tracking-tight text-balance">
-          Stats
-        </h1>
-        <p className="mt-1.5 sm:mt-2 text-[13px] sm:text-sm text-[color:var(--color-ink-3)]">
-          Campaign performance at a glance.
-        </p>
-      </div>
-
-      <OutreachVolume />
-      <StatusBreakdown />
-      <AutoSendControl />
-      <FeederControl addToast={addToast} />
-    </div>
-  );
-}
-
-function OutreachVolume() {
-  const { data, isLoading } = useQuery({
+  const statsQuery = useQuery({
     queryKey: ['stats'],
     queryFn: fetchStats,
     refetchInterval: 60_000,
+  });
+
+  const analyticsQuery = useQuery({
+    queryKey: ['analytics'],
+    queryFn: fetchAnalytics,
+    refetchInterval: 5 * 60_000,
   });
 
   useEffect(() => {
@@ -70,27 +44,174 @@ function OutreachVolume() {
     return () => clearInterval(id);
   }, []);
 
+  const stats = statsQuery.data || {};
+  const analytics = analyticsQuery.data || {};
+  const summary = analytics.summary || {};
+  const bookings = analytics.bookingsAfterWhatsApp || [];
+  const sendWindows = analytics.bestSendWindows || [];
+  const loading = statsQuery.isLoading || analyticsQuery.isLoading;
+
+  const sortedBookings = useMemo(() => {
+    return [...bookings].sort((a, b) => {
+      const aTime = new Date(a.dorisBookingCreatedAt || 0).getTime();
+      const bTime = new Date(b.dorisBookingCreatedAt || 0).getTime();
+      return bookingSort === 'desc' ? bTime - aTime : aTime - bTime;
+    });
+  }, [bookings, bookingSort]);
+
+  const sortedSendWindows = useMemo(() => {
+    return [...sendWindows].sort((a, b) => {
+      const diff = (b.replyRate || 0) - (a.replyRate || 0);
+      return sendSort === 'desc' ? diff : -diff;
+    });
+  }, [sendWindows, sendSort]);
+
+  const bookingChartRows = useMemo(() => buildBookingChartRows(bookings), [bookings]);
+
+  if (loading) return <StatsSkeleton />;
+  if (statsQuery.isError || analyticsQuery.isError) {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title="Stats could not load"
+        hint="Check the API logs and refresh the page."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6 sm:space-y-8">
+      <PageHeader generatedAt={analytics.generated_at} />
+      <KpiGrid stats={stats} summary={summary} />
+      <PeriodCards stats={stats} />
+
+      <section className="grid gap-4 lg:grid-cols-[1fr_340px]">
+        <Panel
+          title="DORIS Bookings After Outreach"
+          description="Bookings created in DORIS after outreach for the same registration."
+          action={
+            <ViewToggle
+              value={bookingView}
+              onChange={setBookingView}
+              firstLabel="Chart"
+              secondLabel="Table"
+            />
+          }
+        >
+          {bookingView === 'chart' ? (
+            <BookingsChart rows={bookingChartRows} bookings={bookings} />
+          ) : (
+            <BookingsTable
+              bookings={sortedBookings}
+              sort={bookingSort}
+              onSortChange={setBookingSort}
+            />
+          )}
+        </Panel>
+
+        <BookingSummary summary={summary} />
+      </section>
+
+      <Panel
+        title="Send-Time Performance"
+        description="Message volume, replies, and matched DORIS bookings by send window."
+        action={
+          <ViewToggle
+            value={sendView}
+            onChange={setSendView}
+            firstLabel="Chart"
+            secondLabel="Table"
+          />
+        }
+      >
+        {sendView === 'chart' ? (
+          <SendTimeChart rows={sortedSendWindows} />
+        ) : (
+          <SendTimesTable
+            windows={sortedSendWindows}
+            sort={sendSort}
+            onSortChange={setSendSort}
+          />
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+function PageHeader({ generatedAt }) {
+  return (
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 className="font-display text-[30px] sm:text-[38px] leading-none font-medium tracking-tight">
+          Stats
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm text-[color:var(--color-ink-3)]">
+          Customer replies and DORIS bookings after outreach.
+        </p>
+      </div>
+      {generatedAt && (
+        <p className="text-[11px] text-[color:var(--color-ink-4)]">
+          Updated {formatLocal(generatedAt)}
+        </p>
+      )}
+    </header>
+  );
+}
+
+function KpiGrid({ stats, summary }) {
+  const total = stats.total || {};
+  const cards = [
+    { label: 'Sent', value: total.sent ?? summary.contacted, icon: Send, tone: 'clay' },
+    { label: 'Delivered', value: total.delivered ?? summary.delivered, icon: CheckCheck, tone: 'amber' },
+    { label: 'Read', value: total.read ?? summary.read, icon: Eye, tone: 'teal' },
+    { label: 'Replied', value: total.replied ?? summary.replied, icon: MessageSquareReply, tone: 'amber' },
+    { label: 'Booked by WhatsApp bot', value: summary.botBooked ?? total.bookedByBot, icon: CalendarCheck, tone: 'moss' },
+    { label: 'DORIS bookings', value: summary.bookingsAfterWhatsApp, icon: BarChart3, tone: 'moss', featured: true },
+  ];
+
+  return (
+    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      {cards.map(({ label, value, icon: Icon, tone, featured }) => (
+        <div
+          key={label}
+          className={`rounded-xl border rule bg-[color:var(--color-canvas-raised)] p-4 transition-colors duration-150 hover:border-[color:var(--color-rule-strong)] ${
+            featured ? 'ring-1 ring-[color:var(--color-moss)]/20' : ''
+          }`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] text-[color:var(--color-ink-3)]">{label}</p>
+            <Icon size={15} strokeWidth={1.75} style={{ color: `var(--color-${tone})` }} />
+          </div>
+          <p className={`mt-3 font-display text-[34px] leading-none tabular-nums ${featured ? 'text-[color:var(--color-moss)]' : ''}`}>
+            {formatNumber(value)}
+          </p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function PeriodCards({ stats }) {
   return (
     <section>
       <h2 className="mb-3 text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)]">
-        Outreach volume
+        Calendar periods
       </h2>
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {BUCKET_META.map(({ key, label, hint }) => (
-          <div
-            key={key}
-            className="rounded-lg border rule bg-[color:var(--color-canvas-raised)] p-3 sm:p-5"
-          >
+      <div className="grid gap-3 sm:grid-cols-3">
+        {PERIODS.map(({ key, label, hint }) => (
+          <div key={key} className="card p-4">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] sm:text-[12px] text-[color:var(--color-ink-3)]">{label}</span>
-              <Activity size={14} strokeWidth={1.75} className="text-[color:var(--color-ink-4)] hidden sm:block" />
+              <p className="text-[12px] text-[color:var(--color-ink-3)]">{label}</p>
+              <span className="text-[10px] text-[color:var(--color-ink-5)]">{hint}</span>
             </div>
-            <p className="mt-2 sm:mt-3 font-display text-[32px] sm:text-[44px] leading-none font-medium text-[color:var(--color-ink)] tabular-nums">
-              {isLoading ? <Skeleton className="h-8 sm:h-10 w-12 sm:w-16" /> : data?.[key]?.sent ?? 0}
+            <p className="mt-3 font-display text-[36px] leading-none tabular-nums">
+              {formatNumber(stats?.[key]?.sent)}
             </p>
-            <p className="mt-1 text-[10px] sm:text-[11px] text-[color:var(--color-ink-4)]">
-              {isLoading ? '' : `${data?.[key]?.replied ?? 0} replies`}
-              <span className="ml-2 text-[color:var(--color-ink-5)]">{hint}</span>
+            <p className="mt-1 text-[11px] text-[color:var(--color-ink-4)]">
+              {formatNumber(stats?.[key]?.replied)} replies
+              {stats?.[key]?.replyRate !== undefined && (
+                <span className="ml-2">{formatPercent(stats[key].replyRate)} reply rate</span>
+              )}
             </p>
           </div>
         ))}
@@ -99,387 +220,358 @@ function OutreachVolume() {
   );
 }
 
-function StatusBreakdown() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['stats'],
-    queryFn: fetchStats,
-    refetchInterval: 60_000,
-  });
+function Panel({ title, description, action, children }) {
+  return (
+    <section className="card overflow-hidden">
+      <div className="flex flex-col gap-3 border-b rule px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-medium">{title}</h2>
+          {description && (
+            <p className="mt-1 text-[12px] text-[color:var(--color-ink-3)]">{description}</p>
+          )}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ViewToggle({ value, onChange, firstLabel, secondLabel }) {
+  return (
+    <div className="inline-flex rounded-lg border rule bg-[color:var(--color-canvas-sunk)] p-1">
+      {[
+        { key: 'chart', label: firstLabel, icon: BarChart3 },
+        { key: 'table', label: secondLabel, icon: Table2 },
+      ].map(({ key, label, icon: Icon }) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors duration-150 ${
+            value === key
+              ? 'bg-[color:var(--color-canvas-raised)] text-[color:var(--color-ink)] shadow-sm'
+              : 'text-[color:var(--color-ink-4)] hover:text-[color:var(--color-ink)]'
+          }`}
+        >
+          <Icon size={13} strokeWidth={1.75} />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BookingsChart({ rows, bookings }) {
+  const max = Math.max(...rows.map((row) => row.count), 1);
+  const replied = bookings.filter((booking) => booking.customerReplied).length;
 
   return (
-    <section>
-      <h2 className="mb-3 text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)]">
-        Status breakdown
-      </h2>
-      <div className="overflow-hidden rounded-lg border rule bg-[color:var(--color-canvas-raised)]">
-        <div className="grid grid-cols-2 divide-y rule sm:grid-cols-3 sm:divide-y lg:grid-cols-3 lg:divide-y-0 lg:divide-x">
-          {STATUS_CARDS.map(({ key, label, icon: Icon, tone, suffix }) => (
-            <div key={key} className="flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4">
+    <div className="p-5">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <CompactStat label="Matched bookings" value={bookings.length} tone="moss" />
+        <CompactStat label="Replied before booking" value={replied} tone="amber" />
+        <CompactStat label="No reply before booking" value={bookings.length - replied} tone="teal" />
+      </div>
+      <div className="mt-5 space-y-3">
+        {rows.map((row) => (
+          <div key={row.key} className="grid grid-cols-[88px_1fr_34px] items-center gap-3">
+            <span className="text-[11px] text-[color:var(--color-ink-4)]">{row.label}</span>
+            <div className="h-8 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
               <div
-                className="grid size-8 sm:size-10 shrink-0 place-items-center rounded-full border rule"
-                style={{ color: `var(--color-${tone})` }}
-              >
-                <Icon size={14} strokeWidth={1.75} className="sm:hidden" />
-                <Icon size={16} strokeWidth={1.75} className="hidden sm:block" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] sm:text-[12px] text-[color:var(--color-ink-3)]">{label}</p>
-                <p className="font-display text-[22px] sm:text-[26px] leading-none font-medium tabular-nums">
-                  {isLoading ? (
-                    <Skeleton className="h-6 sm:h-7 w-8 sm:w-10" />
-                  ) : (
-                    `${data?.total?.[key] ?? 0}${suffix || ''}`
-                  )}
-                </p>
-              </div>
+                className="h-full rounded-lg bg-[color:var(--color-moss)] transition-[width] duration-200"
+                style={{ width: `${Math.max((row.count / max) * 100, 4)}%` }}
+              />
             </div>
-          ))}
-          <div className="flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4 col-span-2 sm:col-span-1">
-            <div className="grid size-8 sm:size-10 shrink-0 place-items-center rounded-full border rule text-[color:var(--color-ink-2)]">
-              <Users size={14} strokeWidth={1.75} className="sm:hidden" />
-              <Users size={16} strokeWidth={1.75} className="hidden sm:block" />
-            </div>
-            <div className="flex-1">
-              <p className="text-[11px] sm:text-[12px] text-[color:var(--color-ink-3)]">Total</p>
-              <p className="font-display text-[22px] sm:text-[26px] leading-none font-medium tabular-nums">
-                {isLoading ? <Skeleton className="h-6 sm:h-7 w-8 sm:w-10" /> : data?.total?.sent ?? 0}
-              </p>
-            </div>
+            <span className="text-right text-[12px] font-medium tabular-nums">{row.count}</span>
           </div>
-        </div>
+        ))}
       </div>
-    </section>
+    </div>
   );
 }
 
-function Toggle({ enabled, onToggle, disabled }) {
+function BookingsTable({ bookings, sort, onSortChange }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      disabled={disabled}
-      onClick={onToggle}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
-        enabled ? 'bg-[color:var(--color-moss)]' : 'bg-[color:var(--color-ink-5)]'
-      }`}
-    >
-      <span
-        className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
-          enabled ? 'translate-x-5' : 'translate-x-0'
-        }`}
+    <div>
+      <TableToolbar
+        label={`${bookings.length} bookings`}
+        sortLabel={sort === 'desc' ? 'Newest first' : 'Oldest first'}
+        onSortToggle={() => onSortChange(sort === 'desc' ? 'asc' : 'desc')}
       />
-    </button>
+      <div className="overflow-x-auto">
+        <table className="min-w-[1040px] w-full text-left text-[12px]">
+          <thead className="bg-[color:var(--color-canvas-sunk)]/70 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-ink-4)]">
+            <tr>
+              <th className="px-5 py-3 font-medium">Customer</th>
+              <th className="px-3 py-3 font-medium">Car</th>
+              <th className="px-3 py-3 font-medium">Message sent</th>
+              <th className="px-3 py-3 font-medium">DORIS booking</th>
+              <th className="px-3 py-3 font-medium">After message</th>
+              <th className="px-3 py-3 font-medium">After reply</th>
+              <th className="px-3 py-3 font-medium">Appointment</th>
+              <th className="px-5 py-3 font-medium">Confidence</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y rule">
+            {bookings.map((booking) => (
+              <tr key={`${booking.saleId}-${booking.registration}-${booking.customer_id}`} className="hover:bg-[color:var(--color-canvas-sunk)]/45">
+                <td className="px-5 py-3">
+                  <div className="font-medium text-[color:var(--color-ink)]">{booking.name}</div>
+                  {booking.dorisName && booking.dorisName !== booking.name && (
+                    <div className="mt-0.5 text-[10px] text-[color:var(--color-ink-4)]">
+                      DORIS: {booking.dorisName}
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-3">
+                  <div className="font-mono text-[11px]">{booking.registration}</div>
+                  <div className="text-[10px] text-[color:var(--color-ink-4)]">{booking.station}</div>
+                </td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.whatsappSentLocal}</td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.dorisBookingCreatedLocal}</td>
+                <td className="px-3 py-3 font-medium text-[color:var(--color-moss)]">
+                  {formatDuration(booking.minutesAfterWhatsApp)}
+                </td>
+                <td className="px-3 py-3">
+                  {booking.minutesAfterReply !== null && booking.minutesAfterReply !== undefined ? (
+                    <span className="font-medium text-[color:var(--color-amber)]">
+                      {formatDuration(booking.minutesAfterReply)}
+                    </span>
+                  ) : (
+                    <span className="text-[color:var(--color-ink-4)]">No reply</span>
+                  )}
+                </td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.appointmentLocal}</td>
+                <td className="px-5 py-3">
+                  <Badge tone={booking.confidence === 'high' ? 'green' : 'amber'}>
+                    {booking.confidence === 'high' ? 'High' : 'Review'}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
-function AutoSendControl() {
-  const queryClient = useQueryClient();
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['auto-send'],
-    queryFn: getAutoSend,
-    refetchInterval: 30_000,
-  });
-
-  const mutation = useMutation({
-    mutationFn: ({ type, enabled }) => setAutoSend(type, enabled),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auto-send'] }),
-  });
-
-  const dueSoonOn = data?.auto_send_due_soon ?? false;
-  const passedOn = data?.auto_send_passed ?? false;
-
+function BookingSummary({ summary }) {
   return (
-    <section>
-      <h2 className="mb-3 text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)]">
-        Auto-send
-      </h2>
-      <div className="card px-5 py-4">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="grid size-9 shrink-0 place-items-center rounded-full border rule text-[color:var(--color-amber)]">
-            <Timer size={16} strokeWidth={1.75} />
-          </div>
-          <div>
-            <h3 className="text-sm font-medium text-[color:var(--color-ink)]">Scheduled Outreach</h3>
-            <p className="text-[11px] text-[color:var(--color-ink-4)] mt-0.5">
-              Sends 4 leads every 2 hours from 8:00–18:00. Toggle each type independently.
-            </p>
-          </div>
+    <aside className="space-y-4">
+      <div className="card p-5">
+        <h2 className="text-sm font-medium">Booking summary</h2>
+        <div className="mt-4 rounded-xl bg-[color:var(--color-canvas-sunk)] p-4">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
+            Matched bookings
+          </p>
+          <p className="mt-2 font-display text-[50px] leading-none text-[color:var(--color-moss)]">
+            {formatNumber(summary.totalAttributedBookings)}
+          </p>
+          <p className="mt-2 text-[12px] text-[color:var(--color-ink-3)]">
+            {formatNumber(summary.botBooked)} by WhatsApp bot +{' '}
+            {formatNumber(summary.bookingsAfterWhatsApp)} matched in DORIS.
+          </p>
         </div>
-
-        {isLoading ? (
-          <div className="flex gap-4">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex items-center justify-between rounded-lg border rule px-4 py-3">
-              <div className="flex items-center gap-3">
-                <Clock size={14} className="text-[color:var(--color-amber)]" />
-                <div>
-                  <p className="text-[13px] font-medium text-[color:var(--color-ink)]">Due Soon</p>
-                  <p className="text-[10px] text-[color:var(--color-ink-4)]">Inspection coming up</p>
-                </div>
-              </div>
-              <Toggle
-                enabled={dueSoonOn}
-                disabled={mutation.isPending}
-                onToggle={() => mutation.mutate({ type: 'due_soon', enabled: !dueSoonOn })}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border rule px-4 py-3">
-              <div className="flex items-center gap-3">
-                <Clock size={14} className="text-[color:var(--color-clay)]" />
-                <div>
-                  <p className="text-[13px] font-medium text-[color:var(--color-ink)]">Passed</p>
-                  <p className="text-[10px] text-[color:var(--color-ink-4)]">Oldest lapsed leads</p>
-                </div>
-              </div>
-              <Toggle
-                enabled={passedOn}
-                disabled={mutation.isPending}
-                onToggle={() => mutation.mutate({ type: 'passed', enabled: !passedOn })}
-              />
-            </div>
-          </div>
-        )}
-
-        {(dueSoonOn || passedOn) && (
-          <div className="mt-3 rounded-lg bg-[color:var(--color-moss-soft)] px-3 py-2 text-[11px] font-medium text-[color:var(--color-moss)] flex items-center gap-2">
-            <Activity size={12} />
-            Active — sending {dueSoonOn && passedOn ? 'due soon + passed' : dueSoonOn ? 'due soon' : 'passed'} (4 each, every 2h)
-          </div>
-        )}
       </div>
-    </section>
+
+      <div className="card p-5">
+        <h2 className="text-sm font-medium">Booking reply split</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <CompactStat label="Replied before booking" value={summary.bookingsAfterWhatsAppReplied} tone="amber" />
+          <CompactStat label="No reply before booking" value={summary.bookingsAfterWhatsAppSilent} tone="teal" />
+        </div>
+      </div>
+    </aside>
   );
 }
 
-const POLL_INTERVAL = 5_000;
-const POLL_TIMEOUT = 5 * 60 * 1000;
-
-function FeederControl({ addToast }) {
-  const queryClient = useQueryClient();
-  const [count, setCount] = useState(50);
-  const [result, setResult] = useState(null);
-  const [showConfirm, setShowConfirm] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [progress, setProgress] = useState(null);
-  const pollRef = useRef(null);
-  const triggerTimeRef = useRef(null);
-
-  const COST_PER_MSG = 0.06;
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => () => stopPolling(), [stopPolling]);
-
-  const startPolling = useCallback((triggerTime, leadLabel) => {
-    const startedAt = Date.now();
-    let lastCount = 0;
-    let stableChecks = 0;
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const { new_sessions } = await getFeederProgress(triggerTime);
-
-        if (new_sessions > 0) {
-          setProgress(`Sending... ${new_sessions} lead${new_sessions !== 1 ? 's' : ''} queued`);
-        }
-
-        if (new_sessions > 0 && new_sessions === lastCount) {
-          stableChecks++;
-        } else {
-          stableChecks = 0;
-        }
-        lastCount = new_sessions;
-
-        if (stableChecks >= 3 && new_sessions > 0) {
-          stopPolling();
-          setScanning(false);
-          setProgress(null);
-          setResult({ ok: true, msg: `Done! ${new_sessions} new lead${new_sessions !== 1 ? 's' : ''} sent (${leadLabel})` });
-          addToast(`${new_sessions} new ${leadLabel} lead${new_sessions !== 1 ? 's' : ''} sent`, 'success');
-          queryClient.invalidateQueries({ queryKey: ['stats'] });
-          queryClient.invalidateQueries({ queryKey: ['customers'] });
-          return;
-        }
-
-        if (Date.now() - startedAt > POLL_TIMEOUT) {
-          stopPolling();
-          setScanning(false);
-          setProgress(null);
-          if (new_sessions > 0) {
-            setResult({ ok: true, msg: `${new_sessions} lead${new_sessions !== 1 ? 's' : ''} sent so far. Processing may still be running.` });
-            addToast(`${new_sessions} leads sent. May still be processing.`, 'info');
-          } else {
-            setResult({ ok: true, msg: 'Scan complete — no new eligible leads found.' });
-            addToast('Scan complete — no new eligible leads.', 'info');
-          }
-          queryClient.invalidateQueries({ queryKey: ['stats'] });
-        }
-      } catch {
-        // ignore polling errors, keep trying
-      }
-    }, POLL_INTERVAL);
-  }, [stopPolling, addToast, queryClient]);
-
-  const handleTrigger = useCallback(async (leadType) => {
-    const label = leadType === 'due_soon' ? 'Due Soon' : leadType === 'passed' ? 'Passed' : 'Mixed';
-    setShowConfirm(null);
-    setResult(null);
-    setScanning(true);
-    setProgress('Scanning leads...');
-
-    try {
-      const { triggered_at } = await triggerFeeder(count, leadType);
-      triggerTimeRef.current = triggered_at;
-      startPolling(triggered_at, label);
-    } catch (err) {
-      setScanning(false);
-      setProgress(null);
-      const msg = err.response?.data?.error || err.message;
-      setResult({ ok: false, msg });
-      addToast(`Failed to trigger feeder: ${msg}`, 'error');
-    }
-  }, [count, startPolling, addToast]);
-
-  const isRunning = scanning;
-  const typeLabel = showConfirm === 'due_soon' ? 'Due Soon' : showConfirm === 'passed' ? 'Passed' : 'Mixed';
+function SendTimeChart({ rows }) {
+  const maxReplyRate = Math.max(...rows.map((row) => row.replyRate || 0), 1);
 
   return (
-    <section>
-      <h2 className="mb-3 text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)]">
-        Send campaigns
-      </h2>
-      <div className="card px-5 py-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-medium text-[color:var(--color-ink)]">Trigger Feeder</h3>
-            <p className="text-[11px] text-[color:var(--color-ink-4)] mt-0.5">
-              Contact new leads via WhatsApp inspection reminders.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-2 text-[11px] text-[color:var(--color-ink-3)]">
-              Leads
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={count}
-                onChange={(e) => setCount(Number(e.target.value))}
-                disabled={isRunning}
-                className="w-20 rounded-lg border rule bg-[color:var(--color-canvas)] px-3 py-1.5 text-sm text-[color:var(--color-ink)] focus:border-[color:var(--color-clay)] focus:outline-none disabled:opacity-50"
+    <div className="p-5">
+      <div className="space-y-3">
+        {rows.map((row) => (
+          <div key={row.key} className="grid gap-2 sm:grid-cols-[92px_1fr_170px] sm:items-center">
+            <div>
+              <p className="font-medium">{row.key}:00</p>
+              <p className="text-[10px] text-[color:var(--color-ink-4)]">{row.sent} sent</p>
+            </div>
+            <div className="h-8 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
+              <div
+                className="h-full rounded-lg bg-[color:var(--color-amber)] transition-[width] duration-200"
+                style={{ width: `${Math.max(((row.replyRate || 0) / maxReplyRate) * 100, 3)}%` }}
               />
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowConfirm('due_soon')}
-              disabled={isRunning}
-              className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-amber)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
-            >
-              {isRunning ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Rocket size={14} />
-              )}
-              Due Soon
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowConfirm('passed')}
-              disabled={isRunning}
-              className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
-            >
-              {isRunning ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Rocket size={14} />
-              )}
-              Passed
-            </button>
-          </div>
-        </div>
-
-        {progress && (
-          <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-[11px] font-medium text-blue-700 flex items-center gap-2">
-            <Loader2 size={12} className="animate-spin" />
-            {progress}
-          </div>
-        )}
-
-        {result && !progress && (
-          <div
-            className={`mt-3 rounded-lg px-3 py-2 text-[11px] font-medium ${
-              result.ok
-                ? 'bg-[color:var(--color-moss-soft)] text-[color:var(--color-moss)]'
-                : 'bg-[color:var(--color-sienna-soft)] text-[color:var(--color-sienna)]'
-            }`}
-          >
-            {result.msg}
-          </div>
-        )}
-
-        {showConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div className="card mx-4 w-full max-w-sm px-6 py-5 shadow-xl">
-              <h3 className="text-base font-display font-semibold text-[color:var(--color-ink)]">
-                Confirm Campaign — {typeLabel}
-              </h3>
-              <div className="mt-3 space-y-2 text-[13px] text-[color:var(--color-ink-3)]">
-                <div className="flex justify-between">
-                  <span>Type</span>
-                  <span className="font-medium text-[color:var(--color-ink)]">{typeLabel}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Recipients</span>
-                  <span className="font-medium text-[color:var(--color-ink)]">{count} people</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Cost per message</span>
-                  <span className="font-medium text-[color:var(--color-ink)]">${COST_PER_MSG.toFixed(2)}</span>
-                </div>
-                <div className="border-t rule my-2" />
-                <div className="flex justify-between">
-                  <span className="font-medium text-[color:var(--color-ink)]">Estimated total</span>
-                  <span className="font-display font-semibold text-[color:var(--color-ink)]">
-                    ${(count * COST_PER_MSG).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-              <p className="mt-3 text-[11px] text-[color:var(--color-ink-4)]">
-                This will send WhatsApp template messages to up to {count} {typeLabel.toLowerCase()} customers. Are you sure?
-              </p>
-              <div className="mt-4 flex items-center gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(null)}
-                  className="rounded-lg border rule px-4 py-2 text-sm font-medium text-[color:var(--color-ink-3)] transition-colors hover:bg-[color:var(--color-canvas-sunk)]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTrigger(showConfirm)}
-                  disabled={isRunning}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--color-clay)] px-4 py-2 text-sm font-medium text-white transition-colors hover:opacity-90 disabled:opacity-50"
-                >
-                  <Send size={14} />
-                  Confirm Send
-                </button>
-              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <MiniMetric label="Replies" value={row.replied} />
+              <MiniMetric label="Rate" value={formatPercent(row.replyRate)} />
+              <MiniMetric label="Bookings" value={row.totalAttributedBookings} tone="moss" />
             </div>
           </div>
-        )}
+        ))}
       </div>
-    </section>
+    </div>
   );
+}
+
+function SendTimesTable({ windows, sort, onSortChange }) {
+  return (
+    <div>
+      <TableToolbar
+        label={`${windows.length} windows`}
+        sortLabel={sort === 'desc' ? 'Highest reply rate' : 'Lowest reply rate'}
+        onSortToggle={() => onSortChange(sort === 'desc' ? 'asc' : 'desc')}
+      />
+      <div className="overflow-x-auto">
+        <table className="min-w-[760px] w-full text-left text-[12px]">
+          <thead className="bg-[color:var(--color-canvas-sunk)]/70 text-[10px] uppercase tracking-[0.14em] text-[color:var(--color-ink-4)]">
+            <tr>
+              <th className="px-5 py-3 font-medium">Send time</th>
+              <th className="px-3 py-3 font-medium">Sent</th>
+              <th className="px-3 py-3 font-medium">Read</th>
+              <th className="px-3 py-3 font-medium">Replies</th>
+              <th className="px-3 py-3 font-medium">Reply rate</th>
+              <th className="px-5 py-3 font-medium">Matched bookings</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y rule">
+            {windows.map((window) => (
+              <tr key={window.key} className="hover:bg-[color:var(--color-canvas-sunk)]/45">
+                <td className="px-5 py-3 font-medium">{window.key}:00</td>
+                <td className="px-3 py-3 tabular-nums">{formatNumber(window.sent)}</td>
+                <td className="px-3 py-3 tabular-nums">{formatNumber(window.read)}</td>
+                <td className="px-3 py-3 tabular-nums">{formatNumber(window.replied)}</td>
+                <td className="px-3 py-3 font-medium tabular-nums text-[color:var(--color-amber)]">
+                  {formatPercent(window.replyRate)}
+                </td>
+                <td className="px-5 py-3 font-medium tabular-nums text-[color:var(--color-moss)]">
+                  {formatNumber(window.totalAttributedBookings)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TableToolbar({ label, sortLabel, onSortToggle }) {
+  return (
+    <div className="flex items-center justify-between border-b rule bg-[color:var(--color-canvas-sunk)]/25 px-5 py-3">
+      <Badge tone="neutral">{label}</Badge>
+      <button
+        type="button"
+        onClick={onSortToggle}
+        className="rounded-lg border rule bg-[color:var(--color-canvas-raised)] px-3 py-1.5 text-[11px] font-medium text-[color:var(--color-ink-3)] transition-colors duration-150 hover:text-[color:var(--color-ink)]"
+      >
+        {sortLabel}
+      </button>
+    </div>
+  );
+}
+
+function CompactStat({ label, value, tone }) {
+  return (
+    <div className="rounded-xl border rule bg-[color:var(--color-canvas-sunk)]/60 p-3">
+      <p className="text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-ink-4)]">
+        {label}
+      </p>
+      <p className="mt-2 font-display text-[30px] leading-none" style={{ color: `var(--color-${tone})` }}>
+        {formatNumber(value)}
+      </p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, tone }) {
+  return (
+    <div className="rounded-lg border rule bg-[color:var(--color-canvas-raised)] px-2 py-1.5">
+      <p className="text-[9px] text-[color:var(--color-ink-4)]">{label}</p>
+      <p className={`mt-0.5 font-medium tabular-nums ${tone === 'moss' ? 'text-[color:var(--color-moss)]' : ''}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function StatsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-20" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <Skeleton key={index} className="h-28" />
+        ))}
+      </div>
+      <Skeleton className="h-72" />
+      <Skeleton className="h-72" />
+    </div>
+  );
+}
+
+function buildBookingChartRows(bookings) {
+  const grouped = new Map();
+  for (const booking of bookings) {
+    const key = dateKey(booking.dorisBookingCreatedAt);
+    if (!grouped.has(key)) grouped.set(key, { key, label: shortDate(booking.dorisBookingCreatedAt), count: 0 });
+    grouped.get(key).count++;
+  }
+  return Array.from(grouped.values()).sort((a, b) => new Date(b.key) - new Date(a.key));
+}
+
+function dateKey(value) {
+  if (!value) return 'unknown';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Helsinki',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value));
+  const keyed = {};
+  for (const part of parts) keyed[part.type] = part.value;
+  return `${keyed.year}-${keyed.month}-${keyed.day}`;
+}
+
+function shortDate(value) {
+  if (!value) return 'Unknown';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Helsinki',
+    day: '2-digit',
+    month: 'short',
+  }).format(new Date(value));
+}
+
+function formatLocal(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Helsinki',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString('en-GB');
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toFixed(Number(value || 0) % 1 ? 1 : 0)}%`;
+}
+
+function formatDuration(minutes) {
+  if (minutes === null || minutes === undefined) return '—';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours < 24) return mins ? `${hours}h ${mins}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  return rest ? `${days}d ${rest}h` : `${days}d`;
 }

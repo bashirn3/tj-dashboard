@@ -152,6 +152,7 @@ async function findAttributedBookings(sessions) {
         const createdAt = task.dorisInfo?.createdAt || sale.createdAt;
         const bookingCreated = createdAt ? new Date(createdAt).getTime() : 0;
         const whatsappSent = new Date(session.last_outbound_at).getTime();
+        const replyAt = session.last_inbound_at ? new Date(session.last_inbound_at).getTime() : null;
         const source = sale.source ?? event.info?.saleSource;
         const isAfterWhatsApp = bookingCreated >= whatsappSent;
         const isBotBooked = session.stop_reason === 'booked';
@@ -183,6 +184,9 @@ async function findAttributedBookings(sessions) {
           dorisBookingCreatedAt: createdAt,
           dorisBookingCreatedLocal: formatHelsinki(createdAt),
           minutesAfterWhatsApp: Math.round((bookingCreated - whatsappSent) / 60000),
+          minutesAfterReply: replyAt && bookingCreated >= replyAt
+            ? Math.round((bookingCreated - replyAt) / 60000)
+            : null,
           appointmentAt: event.duration?.start,
           appointmentLocal: formatHelsinki(event.duration?.start),
           station: site.name,

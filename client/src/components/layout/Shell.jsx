@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Users, Activity, Sun, Moon, TrendingUp } from 'lucide-react';
+import { Users, Activity, Sun, Moon, SlidersHorizontal } from 'lucide-react';
 import { useTheme } from '../../lib/useTheme.js';
 
 function NavItem({ to, icon: Icon, children, end }) {
@@ -49,8 +49,8 @@ export default function Shell({ children }) {
                 <NavItem to="/stats" icon={Activity}>
                   Stats
                 </NavItem>
-                <NavItem to="/analytics" icon={TrendingUp}>
-                  Analytics
+                <NavItem to="/settings" icon={SlidersHorizontal}>
+                  Settings
                 </NavItem>
               </nav>
               <button

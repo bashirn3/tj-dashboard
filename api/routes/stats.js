@@ -7,7 +7,8 @@ router.get('/', async (_req, res) => {
   const [sessionsRes, statusesRes] = await Promise.all([
     supabase
       .from('tj_outbound_sessions')
-      .select('last_outbound_at, last_inbound_at, stop_reminders, stop_reason')
+      .select('number, last_outbound_at, last_inbound_at, stop_reminders, stop_reason')
+      .not('last_outbound_at', 'is', null)
       .or('stop_reason.neq.business_customer,stop_reason.is.null'),
     supabase.from('tj_message_status').select('status, number'),
   ]);
@@ -20,12 +21,10 @@ router.get('/', async (_req, res) => {
   const sessions = sessionsRes.data || [];
   const statuses = statusesRes.data || [];
 
-  const visibleNumbers = new Set(sessions.map((s) => s.number || ''));
-
   const now = new Date();
-  const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
-  const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-  const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+  const currentDay = dayKey(now);
+  const currentWeek = weekKey(now);
+  const currentMonth = monthKey(now);
 
   let totalSent = 0;
   let totalReplied = 0;
@@ -45,25 +44,34 @@ router.get('/', async (_req, res) => {
     else if (s.stop_reminders) stopped++;
 
     const sentAt = new Date(s.last_outbound_at);
-    if (sentAt >= dayAgo) {
+    if (dayKey(sentAt) === currentDay) {
       todaySent++;
       if (s.last_inbound_at) todayReplied++;
     }
-    if (sentAt >= weekAgo) {
+    if (weekKey(sentAt) === currentWeek) {
       weekSent++;
       if (s.last_inbound_at) weekReplied++;
     }
-    if (sentAt >= monthAgo) {
+    if (monthKey(sentAt) === currentMonth) {
       monthSent++;
       if (s.last_inbound_at) monthReplied++;
     }
   }
 
+  const visibleNumbers = new Set(sessions.map((s) => normalizePhone(s.number)));
+  const statusByNumber = new Map();
+  for (const m of statuses) {
+    const number = normalizePhone(m.number);
+    if (!visibleNumbers.has(number)) continue;
+    if (!statusByNumber.has(number)) statusByNumber.set(number, new Set());
+    statusByNumber.get(number).add(String(m.status || '').toLowerCase());
+  }
+
   let delivered = 0;
   let read = 0;
-  for (const m of statuses) {
-    if (m.status === 'delivered' || m.status === 'read') delivered++;
-    if (m.status === 'read') read++;
+  for (const statusSet of statusByNumber.values()) {
+    if (statusSet.has('delivered') || statusSet.has('read')) delivered++;
+    if (statusSet.has('read')) read++;
   }
 
   res.json({
@@ -75,10 +83,12 @@ router.get('/', async (_req, res) => {
       replyRate: totalSent ? Math.round((totalReplied / totalSent) * 100) : 0,
       stopped,
       booked,
+      bookedByBot: booked,
     },
     today: {
       sent: todaySent,
       replied: todayReplied,
+      replyRate: todaySent ? Math.round((todayReplied / todaySent) * 100) : 0,
     },
     week: {
       sent: weekSent,
@@ -88,8 +98,58 @@ router.get('/', async (_req, res) => {
     month: {
       sent: monthSent,
       replied: monthReplied,
+      replyRate: monthSent ? Math.round((monthReplied / monthSent) * 100) : 0,
     },
   });
 });
+
+function normalizePhone(value) {
+  let phone = String(value || '').replace(/[^0-9]/g, '');
+  if (phone.startsWith('0')) phone = `358${phone.slice(1)}`;
+  return phone;
+}
+
+function helsinkiParts(date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Helsinki',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  }).formatToParts(date);
+  const value = {};
+  for (const part of parts) value[part.type] = part.value;
+  return {
+    year: Number(value.year),
+    month: Number(value.month),
+    day: Number(value.day),
+    weekday: value.weekday,
+  };
+}
+
+function dayKey(date) {
+  const { year, month, day } = helsinkiParts(date);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function monthKey(date) {
+  const { year, month } = helsinkiParts(date);
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function weekKey(date) {
+  const { year, month, day, weekday } = helsinkiParts(date);
+  const weekdayIndex = {
+    Mon: 0,
+    Tue: 1,
+    Wed: 2,
+    Thu: 3,
+    Fri: 4,
+    Sat: 5,
+    Sun: 6,
+  }[weekday] ?? 0;
+  const utcDay = Date.UTC(year, month - 1, day);
+  return new Date(utcDay - weekdayIndex * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
 
 export default router;
