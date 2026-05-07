@@ -290,7 +290,7 @@ function LeadPoolPanel({ leadPool, loading, error }) {
           <div>
             <h2 className="text-sm font-medium">Remaining Due-Soon Pool</h2>
             <p className="mt-1 text-[12px] text-[color:var(--color-ink-3)]">
-              Estimated uncontacted DORIS due-soon customers after current dashboard exclusions.
+              Estimated uncontacted due-soon customers.
             </p>
           </div>
           <p className="text-[11px] text-[color:var(--color-ink-4)]">
