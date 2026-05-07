@@ -7,10 +7,9 @@ import {
   CheckCheck,
   Eye,
   MessageSquareReply,
-  Send,
   Table2,
 } from 'lucide-react';
-import { fetchAnalytics, fetchStats, pollMessageStatuses } from '../lib/api.js';
+import { fetchAnalytics, fetchLeadPoolSummary, fetchStats, pollMessageStatuses } from '../lib/api.js';
 import Badge from '../components/ui/Badge.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import Skeleton from '../components/ui/Skeleton.jsx';
@@ -40,6 +39,13 @@ export default function StatsPage() {
     refetchInterval: 5 * 60_000,
   });
 
+  const leadPoolQuery = useQuery({
+    queryKey: ['lead-pool', 'due_soon'],
+    queryFn: fetchLeadPoolSummary,
+    refetchInterval: (query) => query.state.data?.status === 'running' ? 15_000 : 60 * 60_000,
+    staleTime: 30 * 60_000,
+  });
+
   useEffect(() => {
     pollMessageStatuses().catch(() => {});
     const id = setInterval(() => pollMessageStatuses().catch(() => {}), 60_000);
@@ -52,6 +58,7 @@ export default function StatsPage() {
   const bookings = analytics.bookingsAfterWhatsApp || [];
   const sendWindows = analytics.sendTimePerformance || analytics.bestSendWindows || [];
   const loading = statsQuery.isLoading || analyticsQuery.isLoading;
+  const leadPool = leadPoolQuery.data;
   const returnTo = `${location.pathname}${location.search}`;
 
   const sortedBookings = useMemo(() => {
@@ -85,8 +92,19 @@ export default function StatsPage() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <PageHeader generatedAt={analytics.generated_at} />
-      <KpiGrid stats={stats} summary={summary} />
+      <KpiGrid
+        stats={stats}
+        summary={summary}
+        leadPool={leadPool}
+        leadPoolLoading={leadPoolQuery.isLoading || leadPool?.status === 'running'}
+        leadPoolError={leadPoolQuery.isError}
+      />
       <PeriodCards stats={stats} />
+      <LeadPoolPanel
+        leadPool={leadPool}
+        loading={leadPoolQuery.isLoading || leadPool?.status === 'running'}
+        error={leadPoolQuery.isError}
+      />
 
       <section className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <Panel
@@ -162,20 +180,37 @@ function PageHeader({ generatedAt }) {
   );
 }
 
-function KpiGrid({ stats, summary }) {
+function KpiGrid({ stats, summary, leadPool, leadPoolLoading, leadPoolError }) {
   const total = stats.total || {};
+  const totalBookings = summary.totalAttributedBookings ?? (
+    Number(summary.botBooked || 0) + Number(summary.bookingsAfterWhatsApp || 0)
+  );
   const cards = [
-    { label: 'Sent', value: total.sent ?? summary.contacted, icon: Send, tone: 'clay' },
     { label: 'Delivered', value: total.delivered ?? summary.delivered, icon: CheckCheck, tone: 'amber' },
     { label: 'Read', value: total.read ?? summary.read, icon: Eye, tone: 'teal' },
     { label: 'Replied', value: total.replied ?? summary.replied, icon: MessageSquareReply, tone: 'amber' },
-    { label: 'Booked by WhatsApp bot', value: summary.botBooked ?? total.bookedByBot, icon: CalendarCheck, tone: 'moss' },
-    { label: 'DORIS bookings', value: summary.bookingsAfterWhatsApp, icon: BarChart3, tone: 'moss', featured: true },
+    { label: 'Total bookings', value: totalBookings, icon: CalendarCheck, tone: 'moss', featured: true },
+    {
+      label: 'Due-soon conversion',
+      value: summary.dueSoonBookingConversionRate,
+      icon: BarChart3,
+      tone: 'moss',
+      format: 'percent',
+      hint: `${formatNumber(summary.dueSoonBookings)} bookings / ${formatNumber(summary.dueSoonDeliveredReachouts)} delivered`,
+    },
+    {
+      label: 'Due-soon pool',
+      value: leadPoolError ? null : leadPool?.total_remaining,
+      icon: BarChart3,
+      tone: 'teal',
+      loading: leadPoolLoading,
+      hint: leadPool?.generated_at ? `Updated ${formatLocal(leadPool.generated_at)}` : 'Remaining uncontacted',
+    },
   ];
 
   return (
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-      {cards.map(({ label, value, icon: Icon, tone, featured }) => (
+      {cards.map(({ label, value, icon: Icon, tone, featured, format, loading, hint }) => (
         <div
           key={label}
           className={`rounded-xl border rule bg-[color:var(--color-canvas-raised)] p-4 transition-colors duration-150 hover:border-[color:var(--color-rule-strong)] ${
@@ -187,8 +222,11 @@ function KpiGrid({ stats, summary }) {
             <Icon size={15} strokeWidth={1.75} style={{ color: `var(--color-${tone})` }} />
           </div>
           <p className={`mt-3 font-display text-[34px] leading-none tabular-nums ${featured ? 'text-[color:var(--color-moss)]' : ''}`}>
-            {formatNumber(value)}
+            {loading ? '...' : formatMetric(value, format)}
           </p>
+          {hint && (
+            <p className="mt-2 truncate text-[10px] text-[color:var(--color-ink-4)]">{hint}</p>
+          )}
         </div>
       ))}
     </section>
@@ -219,6 +257,94 @@ function PeriodCards({ stats }) {
             </p>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function LeadPoolPanel({ leadPool, loading, error }) {
+  if (loading) {
+    return <Skeleton className="h-32" />;
+  }
+
+  if (error || !leadPool) {
+    return (
+      <section className="card p-5">
+        <h2 className="text-sm font-medium">Remaining Due-Soon Pool</h2>
+        <p className="mt-2 text-[12px] text-[color:var(--color-ink-4)]">
+          Lead pool estimate could not be loaded. Existing outreach metrics are still available.
+        </p>
+      </section>
+    );
+  }
+
+  const stationCounts = leadPool.station_counts || {};
+  const deadlineBuckets = leadPool.deadline_buckets || {};
+  const stationRows = Object.entries(stationCounts).filter(([, value]) => Number(value) > 0);
+  const maxStation = Math.max(...stationRows.map(([, value]) => Number(value)), 1);
+
+  return (
+    <section className="card overflow-hidden">
+      <div className="border-b rule px-5 py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-sm font-medium">Remaining Due-Soon Pool</h2>
+            <p className="mt-1 text-[12px] text-[color:var(--color-ink-3)]">
+              Estimated uncontacted DORIS due-soon customers after current dashboard exclusions.
+            </p>
+          </div>
+          <p className="text-[11px] text-[color:var(--color-ink-4)]">
+            Updated {formatLocal(leadPool.generated_at)}
+          </p>
+        </div>
+      </div>
+      <div className="grid gap-5 p-5 lg:grid-cols-[260px_1fr_1fr]">
+        <div className="rounded-xl bg-[color:var(--color-canvas-sunk)] p-4">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
+            Remaining
+          </p>
+          <p className="mt-2 font-display text-[52px] leading-none text-[color:var(--color-teal)]">
+            {formatNumber(leadPool.total_remaining)}
+          </p>
+          <p className="mt-2 text-[11px] text-[color:var(--color-ink-4)]">
+            {formatNumber(leadPool.contacted_sessions_excluded)} contacted sessions excluded.
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
+            By station
+          </p>
+          <div className="space-y-2">
+            {stationRows.map(([station, value]) => (
+              <div key={station} className="grid grid-cols-[92px_1fr_36px] items-center gap-3">
+                <span className="text-[11px] text-[color:var(--color-ink-4)]">{station}</span>
+                <div className="h-7 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
+                  <div
+                    className="h-full rounded-lg bg-[color:var(--color-teal)]"
+                    style={{ width: `${Math.max((Number(value) / maxStation) * 100, 5)}%` }}
+                  />
+                </div>
+                <span className="text-right text-[12px] font-medium tabular-nums">{formatNumber(value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
+            Deadline window
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <MiniMetric label="0-30d" value={formatNumber(deadlineBuckets.within_30_days)} tone="moss" />
+            <MiniMetric label="31-60d" value={formatNumber(deadlineBuckets.days_31_to_60)} />
+            <MiniMetric label="61-90d" value={formatNumber(deadlineBuckets.days_61_to_90)} />
+            <MiniMetric label="Unknown" value={formatNumber(deadlineBuckets.unknown)} />
+          </div>
+          <p className="mt-3 text-[10px] text-[color:var(--color-ink-4)]">
+            Source window {leadPool.window?.start} to {leadPool.window?.end}; cached estimate.
+          </p>
+        </div>
       </div>
     </section>
   );
@@ -443,8 +569,7 @@ function BookingSummary({ summary }) {
             {formatNumber(summary.totalAttributedBookings)}
           </p>
           <p className="mt-2 text-[12px] text-[color:var(--color-ink-3)]">
-            {formatNumber(summary.botBooked)} by WhatsApp bot +{' '}
-            {formatNumber(summary.bookingsAfterWhatsApp)} matched in DORIS.
+            Total bookings recorded after outreach, including chat bookings and later DORIS bookings.
           </p>
         </div>
       </div>
@@ -755,6 +880,12 @@ function formatLocal(value) {
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString('en-GB');
+}
+
+function formatMetric(value, format) {
+  if (value === null || value === undefined) return '—';
+  if (format === 'percent') return formatPercent(value);
+  return formatNumber(value);
 }
 
 function formatPercent(value) {

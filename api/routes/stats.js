@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import axios from 'axios';
 import { supabase } from '../lib/supabase.js';
 
 const router = Router();
+const DEFAULT_BRIDGE_URL = 'https://doris-bridge.yellowpond-051e3dca.eastus.azurecontainerapps.io';
 
 router.get('/', async (_req, res) => {
   const [sessionsRes, statusesRes] = await Promise.all([
@@ -102,6 +104,51 @@ router.get('/', async (_req, res) => {
     },
   });
 });
+
+router.get('/lead-pool', async (req, res) => {
+  const refresh = req.query.refresh === '1';
+  const { data: sessions, error } = await supabase
+    .from('tj_outbound_sessions')
+    .select('number, customer_id, campaign_type');
+
+  if (error) {
+    console.error('[lead-pool]', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  try {
+    const bridge = await bridgePost('/api/doris/lead-pool/summary', {
+      lead_type: 'due_soon',
+      refresh,
+      excluded_numbers: (sessions || []).map((session) => session.number).filter(Boolean),
+      excluded_customer_ids: (sessions || [])
+        .map((session) => session.customer_id)
+        .filter((id) => id !== null && id !== undefined),
+    });
+
+    res.json({
+      ...bridge,
+      contacted_sessions_excluded: sessions?.length || 0,
+      existing_due_soon_sessions: (sessions || []).filter((session) => session.campaign_type === 'due_soon').length,
+      existing_passed_sessions: (sessions || []).filter((session) => session.campaign_type === 'passed').length,
+    });
+  } catch (err) {
+    console.error('[lead-pool]', err.response?.data || err.message);
+    res.status(502).json({
+      error: 'Failed to load remaining due-soon pool',
+      detail: err.response?.data?.error || err.message,
+    });
+  }
+});
+
+async function bridgePost(path, body) {
+  const baseURL = process.env.DORIS_BRIDGE_URL || DEFAULT_BRIDGE_URL;
+  const apiKey = process.env.DORIS_BRIDGE_API_KEY || process.env.BRIDGE_API_KEY;
+  const headers = apiKey ? { 'X-API-Key': apiKey } : {};
+  const { data } = await axios.post(`${baseURL}${path}`, body, { headers, timeout: 300000 });
+  if (data?.success === false) throw new Error(data.error || 'DORIS bridge request failed');
+  return data?.data ?? data;
+}
 
 function normalizePhone(value) {
   let phone = String(value || '').replace(/[^0-9]/g, '');

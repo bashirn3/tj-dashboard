@@ -10,6 +10,11 @@ export async function fetchStats() {
   return data;
 }
 
+export async function fetchLeadPoolSummary() {
+  const { data } = await api.get('/stats/lead-pool');
+  return data;
+}
+
 export async function fetchAnalytics() {
   const { data } = await api.get('/analytics');
   return data;

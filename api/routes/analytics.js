@@ -65,6 +65,9 @@ async function buildAnalytics() {
   const repliedBookings = directBookings.filter((booking) => booking.customerReplied).length;
   const bookingsByCampaign = countBy(directBookings, (booking) => booking.campaignType || 'unknown');
   const botBooked = rows.filter((row) => row.botBooked).length;
+  const dueSoonDelivered = rows.filter((row) => row.campaignType === 'due_soon' && row.delivered).length;
+  const dueSoonBotBooked = rows.filter((row) => row.campaignType === 'due_soon' && row.botBooked).length;
+  const dueSoonBookings = dueSoonBotBooked + (bookingsByCampaign.due_soon || 0);
   const sendTimePerformance = buildSendTimePerformance(rows, directBookings);
   const replyTiming = buildReplyTiming(rows);
 
@@ -84,6 +87,9 @@ async function buildAnalytics() {
       highConfidenceBookings: directBookings.filter((booking) => booking.confidence === 'high').length,
       reviewBookings: directBookings.filter((booking) => booking.confidence !== 'high').length,
       totalAttributedBookings: botBooked + directBookings.length,
+      dueSoonDeliveredReachouts: dueSoonDelivered,
+      dueSoonBookings,
+      dueSoonBookingConversionRate: percent(dueSoonBookings, dueSoonDelivered),
       replyRate: percent(base.replied, base.contacted),
       deliveredReplyRate: percent(base.replied, base.delivered),
       attributedBookingRate: percent(botBooked + directBookings.length, base.contacted),
@@ -241,6 +247,7 @@ function formatSession(session, statusByNumber) {
     sentAt,
     repliedAt,
     stopReason: session.stop_reason || '',
+    campaignType: session.campaign_type || outbound.campaign_type || '',
     botBooked: session.stop_reminders && session.stop_reason === 'booked',
     delivered: statuses.has('delivered') || statuses.has('read'),
     read: statuses.has('read'),
