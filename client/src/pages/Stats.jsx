@@ -306,9 +306,6 @@ function LeadPoolPanel({ leadPool, loading, error }) {
           <p className="mt-2 font-display text-[52px] leading-none text-[color:var(--color-teal)]">
             {formatNumber(leadPool.total_remaining)}
           </p>
-          <p className="mt-2 text-[11px] text-[color:var(--color-ink-4)]">
-            {formatNumber(leadPool.contacted_sessions_excluded)} contacted sessions excluded.
-          </p>
         </div>
 
         <div>
