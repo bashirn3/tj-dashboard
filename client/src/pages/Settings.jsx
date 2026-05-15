@@ -75,6 +75,11 @@ function AutoSendControl() {
 
   const dueSoonOn = data?.auto_send_due_soon ?? false;
   const passedOn = data?.auto_send_passed ?? false;
+  const activeScheduleLabel = dueSoonOn && passedOn
+    ? 'up to 12 due soon + 4 passed every 2h'
+    : dueSoonOn
+      ? 'up to 12 every 2h'
+      : 'up to 4 every 2h';
 
   return (
     <section>
@@ -89,7 +94,7 @@ function AutoSendControl() {
           <div>
             <h3 className="text-sm font-medium text-[color:var(--color-ink)]">Scheduled Outreach</h3>
             <p className="text-[11px] text-[color:var(--color-ink-4)] mt-0.5">
-              Sends 4 leads every 2 hours from 8:00–18:00. Toggle each type independently.
+              Sends up to 12 due-soon leads and 4 passed leads every 2 hours from 8:00-18:00.
             </p>
           </div>
         </div>
@@ -135,7 +140,7 @@ function AutoSendControl() {
         {(dueSoonOn || passedOn) && (
           <div className="mt-3 rounded-lg bg-[color:var(--color-moss-soft)] px-3 py-2 text-[11px] font-medium text-[color:var(--color-moss)] flex items-center gap-2">
             <Activity size={12} />
-            Active — sending {dueSoonOn && passedOn ? 'due soon + passed' : dueSoonOn ? 'due soon' : 'passed'} (4 each, every 2h)
+            Active - sending {dueSoonOn && passedOn ? 'due soon + passed' : dueSoonOn ? 'due soon' : 'passed'} ({activeScheduleLabel})
           </div>
         )}
       </div>
