@@ -1,11 +1,16 @@
 import { Router } from 'express';
 import axios from 'axios';
 import { supabase } from '../lib/supabase.js';
+import { getMockLeadPool, getMockStats, isDemoMockEnabled } from '../lib/demoMock.js';
 
 const router = Router();
 const DEFAULT_BRIDGE_URL = 'https://doris-bridge.yellowpond-051e3dca.eastus.azurecontainerapps.io';
 
 router.get('/', async (_req, res) => {
+  if (isDemoMockEnabled()) {
+    return res.json(getMockStats());
+  }
+
   const [sessionsRes, statusesRes] = await Promise.all([
     supabase
       .from('tj_outbound_sessions')
@@ -106,6 +111,10 @@ router.get('/', async (_req, res) => {
 });
 
 router.get('/lead-pool', async (req, res) => {
+  if (isDemoMockEnabled()) {
+    return res.json(getMockLeadPool());
+  }
+
   const refresh = req.query.refresh === '1';
   const { data: sessions, error } = await supabase
     .from('tj_outbound_sessions')

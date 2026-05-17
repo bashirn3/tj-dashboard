@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import axios from 'axios';
+import { isDemoMockEnabled } from '../lib/demoMock.js';
 
 const router = Router();
 
@@ -10,6 +11,10 @@ const BATCH_SIZE = 50;
 const MAX_AGE_DAYS = 7;
 
 router.post('/poll', async (_req, res) => {
+  if (isDemoMockEnabled()) {
+    return res.json({ updated: 4, total_pending: 18, errors: 0 });
+  }
+
   const cutoff = new Date(Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: pending, error } = await supabase

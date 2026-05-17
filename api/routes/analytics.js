@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import axios from 'axios';
 import { supabase } from '../lib/supabase.js';
+import { getMockAnalytics, isDemoMockEnabled } from '../lib/demoMock.js';
 
 const router = Router();
 
@@ -17,6 +18,10 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 let cache = { at: 0, data: null };
 
 router.get('/', async (req, res) => {
+  if (isDemoMockEnabled()) {
+    return res.json(getMockAnalytics());
+  }
+
   const refresh = req.query.refresh === '1';
   if (!refresh && cache.data && Date.now() - cache.at < CACHE_TTL_MS) {
     return res.json(cache.data);
