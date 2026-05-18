@@ -104,7 +104,7 @@ export function getMockAnalytics() {
   const read = 835;
   const replied = 276;
   const dueSoonBookings = 54;
-  const dueSoonDeliveredReachouts = 780;
+  const dueSoonDeliveredReachouts = 340;
 
   return {
     generated_at: now().toISOString(),
@@ -217,7 +217,7 @@ function buildBookings(sourceCustomers) {
       source: 2,
       eventType: 2,
       stopReason: customer.stop_reminders ? 'booked' : 'active',
-      campaignType: index < 38 ? 'due_soon' : index < 45 ? 'passed' : 'unknown',
+      campaignType: index < 40 ? 'due_soon' : 'passed',
       sendDayHour: dayHourKey(sentAt),
     };
   }).sort((a, b) => new Date(b.dorisBookingCreatedAt) - new Date(a.dorisBookingCreatedAt));
@@ -226,15 +226,23 @@ function buildBookings(sourceCustomers) {
 function buildSendWindows() {
   const windows = [
     ['Mon 9', 74, 59, 24, 10],
+    ['Mon 11', 81, 67, 27, 11],
     ['Mon 14', 92, 77, 31, 12],
+    ['Mon 17', 58, 47, 16, 5],
     ['Tue 10', 88, 72, 29, 9],
+    ['Tue 12', 79, 64, 24, 8],
     ['Tue 15', 66, 54, 19, 7],
     ['Wed 9', 96, 81, 35, 11],
+    ['Wed 11', 90, 75, 32, 12],
     ['Wed 13', 102, 86, 38, 13],
+    ['Wed 16', 69, 55, 21, 7],
     ['Thu 11', 84, 71, 25, 8],
+    ['Thu 14', 76, 62, 23, 7],
     ['Thu 16', 57, 45, 15, 4],
     ['Fri 10', 72, 58, 20, 5],
+    ['Fri 12', 69, 56, 19, 6],
     ['Fri 14', 61, 49, 17, 4],
+    ['Sat 10', 52, 41, 13, 3],
   ];
 
   return windows.map(([key, sent, read, replied, totalAttributedBookings]) => ({
