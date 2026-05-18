@@ -224,14 +224,23 @@ function buildBookings(sourceCustomers) {
 }
 
 function buildSendWindows() {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const hours = [9, 10, 11, 12, 13, 14, 15, 16, 17];
+  const windows = [
+    ['Mon', 9], ['Mon', 10], ['Mon', 11], ['Mon', 13], ['Mon', 14], ['Mon', 16],
+    ['Tue', 9], ['Tue', 11], ['Tue', 12], ['Tue', 13], ['Tue', 15], ['Tue', 16],
+    ['Wed', 9], ['Wed', 10], ['Wed', 11], ['Wed', 12], ['Wed', 14], ['Wed', 15],
+    ['Thu', 10], ['Thu', 11], ['Thu', 13], ['Thu', 14], ['Thu', 15], ['Thu', 16],
+    ['Fri', 9], ['Fri', 10], ['Fri', 12], ['Fri', 13], ['Fri', 14], ['Fri', 16],
+    ['Sat', 10], ['Sat', 11], ['Sat', 12],
+  ];
 
-  return days.flatMap((day, dayIndex) => hours.map((hour, hourIndex) => {
+  return windows.map(([day, hour], index) => {
+    const dayIndex = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(day);
+    const hourIndex = hour - 9;
     const peakHourLift = hour >= 11 && hour <= 14 ? 24 : 0;
-    const sent = 52 + dayIndex * 5 + hourIndex * 3 + peakHourLift;
+    const saturdayDrag = day === 'Sat' ? 22 : 0;
+    const sent = 52 + dayIndex * 5 + hourIndex * 3 + peakHourLift - saturdayDrag;
     const read = Math.round(sent * 0.82);
-    const replied = Math.round(sent * (0.24 + ((dayIndex + hourIndex) % 4) * 0.025));
+    const replied = Math.round(sent * (0.24 + (index % 4) * 0.025));
     const totalAttributedBookings = Math.max(3, Math.round(replied * (hour >= 11 && hour <= 14 ? 0.36 : 0.28)));
     const botBooked = Math.round(totalAttributedBookings * 0.35);
 
@@ -246,7 +255,7 @@ function buildSendWindows() {
       totalAttributedBookings,
       replyRate: percent(replied, sent),
     };
-  }));
+  });
 }
 
 function statusForIndex(index) {
