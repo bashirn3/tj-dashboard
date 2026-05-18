@@ -185,6 +185,8 @@ function KpiGrid({ stats, summary, leadPool, leadPoolLoading, leadPoolError }) {
   const totalBookings = summary.totalAttributedBookings ?? (
     Number(summary.botBooked || 0) + Number(summary.bookingsAfterWhatsApp || 0)
   );
+  const dueSoonConversionDenominator = summary.dueSoonReadReachouts ?? summary.dueSoonDeliveredReachouts;
+  const dueSoonConversionDenominatorLabel = summary.dueSoonReadReachouts !== undefined ? 'read' : 'delivered';
   const cards = [
     { label: 'Delivered', value: total.delivered ?? summary.delivered, icon: CheckCheck, tone: 'amber' },
     { label: 'Read', value: total.read ?? summary.read, icon: Eye, tone: 'teal' },
@@ -196,7 +198,7 @@ function KpiGrid({ stats, summary, leadPool, leadPoolLoading, leadPoolError }) {
       icon: BarChart3,
       tone: 'moss',
       format: 'percent',
-      hint: `${formatNumber(summary.dueSoonBookings)} bookings / ${formatNumber(summary.dueSoonDeliveredReachouts)} delivered`,
+      hint: `${formatNumber(summary.dueSoonBookings)} bookings / ${formatNumber(dueSoonConversionDenominator)} ${dueSoonConversionDenominatorLabel}`,
     },
     {
       label: 'Due-soon pool',

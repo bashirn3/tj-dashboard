@@ -40,11 +40,11 @@ const bookings = buildBookings(customers);
 export function getMockStats() {
   return {
     total: {
-      sent: 1184,
-      delivered: 1042,
-      read: 835,
-      replied: 276,
-      replyRate: 23,
+      sent: 560,
+      delivered: 491,
+      read: 408,
+      replied: 136,
+      replyRate: 24,
       stopped: 42,
       booked: 18,
       bookedByBot: 18,
@@ -99,12 +99,12 @@ export function getMockLeadPool() {
 export function getMockAnalytics() {
   const directBookings = bookings;
   const botBooked = 18;
-  const contacted = 1184;
-  const delivered = 1042;
-  const read = 835;
-  const replied = 276;
-  const dueSoonBookings = 54;
-  const dueSoonDeliveredReachouts = 340;
+  const contacted = 560;
+  const delivered = 491;
+  const read = 408;
+  const replied = 136;
+  const dueSoonBookings = 65;
+  const dueSoonReadReachouts = 408;
 
   return {
     generated_at: now().toISOString(),
@@ -126,9 +126,10 @@ export function getMockAnalytics() {
       highConfidenceBookings: directBookings.filter((booking) => booking.confidence === 'high').length,
       reviewBookings: directBookings.filter((booking) => booking.confidence !== 'high').length,
       totalAttributedBookings: 65,
-      dueSoonDeliveredReachouts,
+      dueSoonDeliveredReachouts: delivered,
+      dueSoonReadReachouts,
       dueSoonBookings,
-      dueSoonBookingConversionRate: percent(dueSoonBookings, dueSoonDeliveredReachouts),
+      dueSoonBookingConversionRate: percent(dueSoonBookings, dueSoonReadReachouts),
       replyRate: percent(replied, contacted),
       deliveredReplyRate: percent(replied, delivered),
       attributedBookingRate: percent(65, contacted),
