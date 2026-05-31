@@ -7,10 +7,14 @@ import customersRouter from './routes/customers.js';
 import chatRouter from './routes/chat.js';
 import feederRouter from './routes/feeder.js';
 import messagesRouter from './routes/messages.js';
+import captureRouter from './routes/capture.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Limit is generous for base64 screenshots from the booking-capture flow. The
+// client downscales/compresses first, and Vercel still caps the platform body
+// at ~4.5MB, so this just avoids the default 100kb express rejection.
+app.use(express.json({ limit: '12mb' }));
 
 app.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
@@ -25,6 +29,7 @@ api.use('/customers', customersRouter);
 api.use('/chat', chatRouter);
 api.use('/feeder', feederRouter);
 api.use('/messages', messagesRouter);
+api.use('/capture', captureRouter);
 
 app.use('/api', api);
 app.use('/', api);

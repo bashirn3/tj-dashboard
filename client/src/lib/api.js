@@ -64,3 +64,13 @@ export async function getFeederProgress(since) {
   const { data } = await api.get('/feeder/progress', { params: { since } });
   return data;
 }
+
+export async function extractBookingCapture(payload) {
+  const { data } = await api.post('/capture/extract', payload);
+  return data;
+}
+
+export async function commitBookingCapture(payload) {
+  const { data } = await api.post('/capture/commit', payload);
+  return data;
+}
