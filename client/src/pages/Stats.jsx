@@ -108,8 +108,8 @@ export default function StatsPage() {
 
       <section className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <Panel
-          title="DORIS Bookings After Outreach"
-          description="Bookings created in DORIS after outreach for the same registration."
+          title="Bookings After Outreach"
+          description="Bookings matched to messaged vehicles after outreach (same registration)."
           action={
             <ViewToggle
               value={bookingView}
@@ -136,7 +136,7 @@ export default function StatsPage() {
 
       <Panel
         title="Send-Time Performance"
-        description="Message volume, replies, and matched DORIS bookings by send window."
+        description="Message volume, replies, and matched bookings by send window."
         action={
           <ViewToggle
             value={sendView}
@@ -168,7 +168,7 @@ function PageHeader({ generatedAt }) {
           Stats
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-[color:var(--color-ink-3)]">
-          Customer replies and DORIS bookings after outreach.
+          Customer replies and bookings after outreach.
         </p>
       </div>
       {generatedAt && (
@@ -189,7 +189,7 @@ function KpiGrid({ stats, summary, leadPool, leadPoolLoading, leadPoolError }) {
     { label: 'Delivered', value: total.delivered ?? summary.delivered, icon: CheckCheck, tone: 'amber' },
     { label: 'Read', value: total.read ?? summary.read, icon: Eye, tone: 'teal' },
     { label: 'Replied', value: total.replied ?? summary.replied, icon: MessageSquareReply, tone: 'amber' },
-    { label: 'Total bookings', value: totalBookings, icon: CalendarCheck, tone: 'moss', featured: true },
+    { label: 'Bookings attributed to WhatsApp', value: totalBookings, icon: CalendarCheck, tone: 'moss', featured: true },
     {
       label: 'Due-soon conversion',
       value: summary.dueSoonBookingConversionRate,
@@ -491,7 +491,7 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
               <th className="px-3 py-3 font-medium">Campaign</th>
               <th className="px-3 py-3 font-medium">Car</th>
               <th className="px-3 py-3 font-medium">Message sent</th>
-              <th className="px-3 py-3 font-medium">DORIS booking</th>
+              <th className="px-3 py-3 font-medium">Booking</th>
               <th className="px-3 py-3 font-medium">After message</th>
               <th className="px-3 py-3 font-medium">After reply</th>
               <th className="px-3 py-3 font-medium">Appointment</th>
@@ -566,7 +566,7 @@ function BookingSummary({ summary }) {
             {formatNumber(summary.totalAttributedBookings)}
           </p>
           <p className="mt-2 text-[12px] text-[color:var(--color-ink-3)]">
-            Total bookings recorded after outreach, including chat bookings and later DORIS bookings.
+            Total bookings recorded after outreach, including chat bookings and later matched bookings.
           </p>
         </div>
       </div>

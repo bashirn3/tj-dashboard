@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import axios from 'axios';
-import { supabase } from '../lib/supabase.js';
+import { supabase, fetchAll } from '../lib/supabase.js';
 
 const router = Router();
 
@@ -28,24 +28,26 @@ router.get('/', async (req, res) => {
 });
 
 async function buildAnalytics() {
-  const [sessionsRes, statusesRes] = await Promise.all([
-    supabase
-      .from('tj_outbound_sessions')
-      .select('*')
-      .not('last_outbound_at', 'is', null)
-      .or('stop_reason.neq.business_customer,stop_reason.is.null')
-      .order('last_outbound_at', { ascending: true })
-      .limit(2000),
-    supabase.from('tj_message_status').select('number, status').limit(5000),
+  // PostgREST hard-caps each request at 1000 rows, so paginate to get every
+  // session/status (we have >1200 sessions) instead of silently truncating.
+  const [allSessions, allStatuses] = await Promise.all([
+    fetchAll(() =>
+      supabase
+        .from('tj_outbound_sessions')
+        .select('*')
+        .not('last_outbound_at', 'is', null)
+        .or('stop_reason.neq.business_customer,stop_reason.is.null')
+        .order('id', { ascending: true })
+    ),
+    fetchAll(() =>
+      supabase.from('tj_message_status').select('number, status').order('id', { ascending: true })
+    ),
   ]);
 
-  if (sessionsRes.error) throw sessionsRes.error;
-  if (statusesRes.error) throw statusesRes.error;
-
-  const sessions = (sessionsRes.data || []).filter(
-    (session) => session.customer_id && session.customer_id !== 999999
-  );
-  const statusByNumber = buildStatusMap(statusesRes.data || []);
+  const sessions = allSessions
+    .filter((session) => session.customer_id && session.customer_id !== 999999)
+    .sort((a, b) => new Date(a.last_outbound_at) - new Date(b.last_outbound_at));
+  const statusByNumber = buildStatusMap(allStatuses);
   const rows = sessions.map((session) => formatSession(session, statusByNumber));
   const base = buildBaseStats(rows);
 

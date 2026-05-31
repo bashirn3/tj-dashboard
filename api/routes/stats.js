@@ -1,27 +1,31 @@
 import { Router } from 'express';
 import axios from 'axios';
-import { supabase } from '../lib/supabase.js';
+import { supabase, fetchAll } from '../lib/supabase.js';
 
 const router = Router();
 const DEFAULT_BRIDGE_URL = 'https://doris-bridge.yellowpond-051e3dca.eastus.azurecontainerapps.io';
 
 router.get('/', async (_req, res) => {
-  const [sessionsRes, statusesRes] = await Promise.all([
-    supabase
-      .from('tj_outbound_sessions')
-      .select('number, last_outbound_at, last_inbound_at, stop_reminders, stop_reason')
-      .not('last_outbound_at', 'is', null)
-      .or('stop_reason.neq.business_customer,stop_reason.is.null'),
-    supabase.from('tj_message_status').select('status, number'),
-  ]);
-
-  if (sessionsRes.error) {
-    console.error('[stats]', sessionsRes.error);
-    return res.status(500).json({ error: sessionsRes.error.message });
+  let sessions;
+  let statuses;
+  try {
+    [sessions, statuses] = await Promise.all([
+      fetchAll(() =>
+        supabase
+          .from('tj_outbound_sessions')
+          .select('number, last_outbound_at, last_inbound_at, stop_reminders, stop_reason')
+          .not('last_outbound_at', 'is', null)
+          .or('stop_reason.neq.business_customer,stop_reason.is.null')
+          .order('id', { ascending: true })
+      ),
+      fetchAll(() =>
+        supabase.from('tj_message_status').select('status, number').order('id', { ascending: true })
+      ),
+    ]);
+  } catch (err) {
+    console.error('[stats]', err);
+    return res.status(500).json({ error: err.message });
   }
-
-  const sessions = sessionsRes.data || [];
-  const statuses = statusesRes.data || [];
 
   const now = new Date();
   const currentDay = dayKey(now);
