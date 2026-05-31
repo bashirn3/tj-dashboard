@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabase } from '../lib/supabase.js';
+import { supabase, fetchAll } from '../lib/supabase.js';
 
 const router = Router();
 
@@ -28,10 +28,26 @@ router.get('/', async (req, res) => {
     query = query.eq('stop_reminders', true).neq('stop_reason', 'booked');
   }
 
-  const [sessionsResult, statusesResult] = await Promise.all([
-    query,
-    supabase.from('tj_message_status').select('number, status'),
-  ]);
+  let sessionsResult;
+  let statusRows;
+  try {
+    [sessionsResult, statusRows] = await Promise.all([
+      query,
+      // PostgREST caps each request at 1000 rows. tj_message_status is now >1000, so an
+      // unpaginated select silently drops the newest messages and their statuses fall
+      // back to 'sent' (this caused the "stuck on sent" regression). Page through every
+      // row oldest-first so the latest status per number wins when we build the map.
+      fetchAll(() =>
+        supabase
+          .from('tj_message_status')
+          .select('number, status, sent_at')
+          .order('sent_at', { ascending: true })
+      ),
+    ]);
+  } catch (err) {
+    console.error('[customers]', err);
+    return res.status(500).json({ error: err.message });
+  }
 
   if (sessionsResult.error) {
     console.error('[customers]', sessionsResult.error);
@@ -39,7 +55,7 @@ router.get('/', async (req, res) => {
   }
 
   const statusByNumber = {};
-  for (const m of statusesResult.data || []) {
+  for (const m of statusRows) {
     statusByNumber[m.number] = m.status;
   }
 
@@ -67,7 +83,15 @@ router.get('/:phone', async (req, res) => {
 
   const [sessionResult, statusResult] = await Promise.all([
     supabase.from('tj_outbound_sessions').select('*').eq('number', phone).maybeSingle(),
-    supabase.from('tj_message_status').select('number, status').eq('number', phone).maybeSingle(),
+    // A number can have several status rows (one per reminder); maybeSingle() errors on
+    // >1 row and dropped the status entirely. Take the most recent one instead.
+    supabase
+      .from('tj_message_status')
+      .select('number, status')
+      .eq('number', phone)
+      .order('sent_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (sessionResult.error) {
