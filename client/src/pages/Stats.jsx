@@ -392,21 +392,28 @@ function ViewToggle({ value, onChange, firstLabel, secondLabel }) {
 function BookingsChart({ rows, bookings }) {
   const max = Math.max(...rows.map((row) => row.count), 1);
   const replied = bookings.filter((booking) => booking.customerReplied).length;
-  const timeBuckets = buildTimeAfterBuckets(bookings);
-  const maxBucket = Math.max(...timeBuckets.map((bucket) => bucket.count), 1);
+  const calendarMatched = bookings.filter((booking) => booking.calendarMatched).length;
+  const sinceRestart = bookings.filter((booking) => booking.messagedAfterRestart).length;
+  const earlierWaves = bookings.length - sinceRestart;
+  const attribution = [
+    { key: 'matched', label: 'On calendar', count: calendarMatched, tone: 'moss' },
+    { key: 'restart', label: 'Since 29 May', count: sinceRestart, tone: 'amber' },
+    { key: 'earlier', label: 'Earlier waves', count: earlierWaves, tone: 'teal' },
+  ];
+  const maxAttribution = Math.max(...attribution.map((item) => item.count), 1);
 
   return (
     <div className="p-5">
       <div className="grid gap-3 sm:grid-cols-3">
-        <CompactStat label="Matched bookings" value={bookings.length} tone="moss" />
-        <CompactStat label="Replied before booking" value={replied} tone="amber" />
-        <CompactStat label="No reply before booking" value={bookings.length - replied} tone="teal" />
+        <CompactStat label="Attributed bookings" value={bookings.length} tone="moss" />
+        <CompactStat label="Replied" value={replied} tone="amber" />
+        <CompactStat label="No reply" value={bookings.length - replied} tone="teal" />
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-              By booking date
+              By appointment week
             </p>
             <div className="flex items-center gap-3 text-[10px] text-[color:var(--color-ink-4)]">
               <LegendDot tone="amber" label="Due soon" />
@@ -431,19 +438,22 @@ function BookingsChart({ rows, bookings }) {
 
         <div>
           <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-            Time from message to booking
+            Attribution
           </p>
           <div className="space-y-3">
-            {timeBuckets.map((bucket) => (
-              <div key={bucket.key} className="grid grid-cols-[64px_1fr_26px] items-center gap-3">
-                <span className="text-[11px] text-[color:var(--color-ink-4)]">{bucket.label}</span>
+            {attribution.map((item) => (
+              <div key={item.key} className="grid grid-cols-[92px_1fr_26px] items-center gap-3">
+                <span className="text-[11px] text-[color:var(--color-ink-4)]">{item.label}</span>
                 <div className="h-7 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
                   <div
-                    className="h-full rounded-lg bg-[color:var(--color-moss)] transition-[width] duration-200"
-                    style={{ width: `${Math.max((bucket.count / maxBucket) * 100, bucket.count ? 6 : 0)}%` }}
+                    className="h-full rounded-lg transition-[width] duration-200"
+                    style={{
+                      width: `${Math.max((item.count / maxAttribution) * 100, item.count ? 6 : 0)}%`,
+                      backgroundColor: `var(--color-${item.tone})`,
+                    }}
                   />
                 </div>
-                <span className="text-right text-[12px] font-medium tabular-nums">{bucket.count}</span>
+                <span className="text-right text-[12px] font-medium tabular-nums">{item.count}</span>
               </div>
             ))}
           </div>
@@ -491,16 +501,14 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
               <th className="px-3 py-3 font-medium">Campaign</th>
               <th className="px-3 py-3 font-medium">Car</th>
               <th className="px-3 py-3 font-medium">Message sent</th>
-              <th className="px-3 py-3 font-medium">Booking</th>
-              <th className="px-3 py-3 font-medium">After message</th>
-              <th className="px-3 py-3 font-medium">After reply</th>
               <th className="px-3 py-3 font-medium">Appointment</th>
-              <th className="px-5 py-3 font-medium">Confidence</th>
+              <th className="px-3 py-3 font-medium">Replied</th>
+              <th className="px-5 py-3 font-medium">Window</th>
             </tr>
           </thead>
           <tbody className="divide-y rule">
             {bookings.map((booking) => (
-              <tr key={`${booking.saleId}-${booking.registration}-${booking.customer_id}`} className="hover:bg-[color:var(--color-canvas-sunk)]/45">
+              <tr key={`${booking.number}-${booking.registration}-${booking.customer_id}`} className="hover:bg-[color:var(--color-canvas-sunk)]/45">
                 <td className="px-5 py-3">
                   <Link
                     to={`/customers/${booking.number}`}
@@ -509,37 +517,28 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
                   >
                     {booking.name}
                   </Link>
-                  {booking.dorisName && booking.dorisName !== booking.name && (
-                    <div className="mt-0.5 text-[10px] text-[color:var(--color-ink-4)]">
-                      DORIS: {booking.dorisName}
-                    </div>
-                  )}
                 </td>
                 <td className="px-3 py-3">
                   <CampaignBadge type={booking.campaignType} />
                 </td>
                 <td className="px-3 py-3">
                   <div className="font-mono text-[11px]">{booking.registration}</div>
-                  <div className="text-[10px] text-[color:var(--color-ink-4)]">{booking.station}</div>
+                  <div className="text-[10px] text-[color:var(--color-ink-4)]">
+                    {booking.station || (booking.calendarMatched ? '' : 'In-chat booking')}
+                  </div>
                 </td>
                 <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.whatsappSentLocal}</td>
-                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.dorisBookingCreatedLocal}</td>
-                <td className="px-3 py-3 font-medium text-[color:var(--color-moss)]">
-                  {formatDuration(booking.minutesAfterWhatsApp)}
-                </td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.appointmentLocal || '—'}</td>
                 <td className="px-3 py-3">
-                  {booking.minutesAfterReply !== null && booking.minutesAfterReply !== undefined ? (
-                    <span className="font-medium text-[color:var(--color-amber)]">
-                      {formatDuration(booking.minutesAfterReply)}
-                    </span>
+                  {booking.customerReplied ? (
+                    <span className="font-medium text-[color:var(--color-amber)]">Yes</span>
                   ) : (
                     <span className="text-[color:var(--color-ink-4)]">No reply</span>
                   )}
                 </td>
-                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.appointmentLocal}</td>
                 <td className="px-5 py-3">
-                  <Badge tone={booking.confidence === 'high' ? 'green' : 'amber'}>
-                    {booking.confidence === 'high' ? 'High' : 'Review'}
+                  <Badge tone={booking.messagedAfterRestart ? 'green' : 'amber'}>
+                    {booking.messagedAfterRestart ? 'Since 29 May' : 'Earlier wave'}
                   </Badge>
                 </td>
               </tr>
@@ -560,14 +559,25 @@ function BookingSummary({ summary }) {
         <h2 className="text-sm font-medium">Booking summary</h2>
         <div className="mt-4 rounded-xl bg-[color:var(--color-canvas-sunk)] p-4">
           <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-            Matched bookings
+            Attributed bookings
           </p>
           <p className="mt-2 font-display text-[50px] leading-none text-[color:var(--color-moss)]">
             {formatNumber(summary.totalAttributedBookings)}
           </p>
           <p className="mt-2 text-[12px] text-[color:var(--color-ink-3)]">
-            Total bookings recorded after outreach, including chat bookings and later matched bookings.
+            Messaged vehicles found on the booking calendar, plus in-chat bookings
+            {summary.calendarMatchedBookings !== undefined
+              ? ` (${formatNumber(summary.calendarMatchedBookings)} matched to the calendar).`
+              : '.'}
           </p>
+        </div>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="text-sm font-medium">Outreach window</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <CompactStat label="Since 29 May" value={summary.bookingsAfterRestart || 0} tone="moss" />
+          <CompactStat label="Earlier waves" value={summary.bookingsEarlierWaves || 0} tone="teal" />
         </div>
       </div>
 
@@ -582,8 +592,8 @@ function BookingSummary({ summary }) {
       <div className="card p-5">
         <h2 className="text-sm font-medium">Reply split</h2>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <CompactStat label="Replied before booking" value={summary.bookingsAfterWhatsAppReplied} tone="amber" />
-          <CompactStat label="No reply before booking" value={summary.bookingsAfterWhatsAppSilent} tone="teal" />
+          <CompactStat label="Replied" value={summary.bookingsAfterWhatsAppReplied} tone="amber" />
+          <CompactStat label="No reply" value={summary.bookingsAfterWhatsAppSilent} tone="teal" />
         </div>
       </div>
     </aside>
@@ -802,24 +812,6 @@ function buildBookingChartRows(bookings) {
   return Array.from(grouped.values()).sort((a, b) => new Date(b.key) - new Date(a.key));
 }
 
-function buildTimeAfterBuckets(bookings) {
-  const buckets = [
-    { key: 'under_1h', label: '<1h', count: 0, test: (minutes) => minutes < 60 },
-    { key: '1_6h', label: '1-6h', count: 0, test: (minutes) => minutes >= 60 && minutes < 360 },
-    { key: '6_24h', label: '6-24h', count: 0, test: (minutes) => minutes >= 360 && minutes < 1440 },
-    { key: '1_3d', label: '1-3d', count: 0, test: (minutes) => minutes >= 1440 && minutes < 4320 },
-    { key: '3d_plus', label: '3d+', count: 0, test: (minutes) => minutes >= 4320 },
-  ];
-
-  for (const booking of bookings) {
-    const minutes = booking.minutesAfterWhatsApp;
-    const bucket = buckets.find((item) => item.test(minutes));
-    if (bucket) bucket.count++;
-  }
-
-  return buckets;
-}
-
 function buildSendHeatmap(rows) {
   const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const byDayHour = new Map();
@@ -889,13 +881,3 @@ function formatPercent(value) {
   return `${Number(value || 0).toFixed(Number(value || 0) % 1 ? 1 : 0)}%`;
 }
 
-function formatDuration(minutes) {
-  if (minutes === null || minutes === undefined) return '—';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours < 24) return mins ? `${hours}h ${mins}m` : `${hours}h`;
-  const days = Math.floor(hours / 24);
-  const rest = hours % 24;
-  return rest ? `${days}d ${rest}h` : `${days}d`;
-}

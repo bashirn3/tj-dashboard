@@ -1,17 +1,11 @@
 import { Router } from 'express';
-import axios from 'axios';
 import { supabase, fetchAll } from '../lib/supabase.js';
 
 const router = Router();
 
-const SITE_CALENDAR_MAP = {
-  58: { calendarId: 61, name: 'Vaajakoski' },
-  59: { calendarId: 62, name: 'Jämsä' },
-  60: { calendarId: 63, name: 'Laukaa' },
-  61: { calendarId: 64, name: 'Muurame' },
-};
-
-const DEFAULT_BRIDGE_URL = 'https://doris-bridge.yellowpond-051e3dca.eastus.azurecontainerapps.io';
+// Campaign restarted on the CSV-fallback path at 29 May 2026 09:31 Helsinki time.
+// Bookings messaged on/after this are "since restart"; earlier ones are prior waves.
+const CAMPAIGN_RESTART_AT = new Date('2026-05-29T09:31:00+03:00').getTime();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
 let cache = { at: 0, data: null };
@@ -51,53 +45,48 @@ async function buildAnalytics() {
   const rows = sessions.map((session) => formatSession(session, statusByNumber));
   const base = buildBaseStats(rows);
 
-  let doris = { ok: true, error: null };
-  let attributedBookings = [];
+  const snapshotsByReg = await loadSnapshotsByReg();
+  const bookings = buildBookings(sessions, snapshotsByReg);
 
-  try {
-    attributedBookings = await findAttributedBookings(sessions);
-  } catch (err) {
-    doris = {
-      ok: false,
-      error: err.response?.data?.error || err.message || 'Failed to load DORIS bookings',
-    };
-  }
-
-  const directBookings = attributedBookings.filter((booking) => booking.kind === 'doris_after_whatsapp');
-  const repliedBookings = directBookings.filter((booking) => booking.customerReplied).length;
-  const bookingsByCampaign = countBy(directBookings, (booking) => booking.campaignType || 'unknown');
+  const repliedBookings = bookings.filter((booking) => booking.customerReplied).length;
+  const matchedBookings = bookings.filter((booking) => booking.calendarMatched).length;
+  const bookingsAfterRestart = bookings.filter((booking) => booking.messagedAfterRestart).length;
+  const bookingsByCampaign = countBy(bookings, (booking) => booking.campaignType || 'unknown');
   const botBooked = rows.filter((row) => row.botBooked).length;
   const dueSoonDelivered = rows.filter((row) => row.campaignType === 'due_soon' && row.delivered).length;
-  const dueSoonBotBooked = rows.filter((row) => row.campaignType === 'due_soon' && row.botBooked).length;
-  const dueSoonBookings = dueSoonBotBooked + (bookingsByCampaign.due_soon || 0);
-  const sendTimePerformance = buildSendTimePerformance(rows, directBookings);
+  const dueSoonBookings = bookings.filter((booking) => booking.campaignType === 'due_soon').length;
+  const sendTimePerformance = buildSendTimePerformance(rows, bookings);
   const replyTiming = buildReplyTiming(rows);
 
   return {
     generated_at: new Date().toISOString(),
-    doris,
+    bookingSource: 'snapshots',
+    doris: { ok: true, error: null, source: 'snapshots' },
     summary: {
       contacted: base.contacted,
       delivered: base.delivered,
       read: base.read,
       replied: base.replied,
       botBooked,
-      bookingsAfterWhatsApp: directBookings.length,
+      bookingsAfterWhatsApp: bookings.length,
       bookingsAfterWhatsAppReplied: repliedBookings,
-      bookingsAfterWhatsAppSilent: directBookings.length - repliedBookings,
+      bookingsAfterWhatsAppSilent: bookings.length - repliedBookings,
       bookingsAfterWhatsAppByCampaign: bookingsByCampaign,
-      highConfidenceBookings: directBookings.filter((booking) => booking.confidence === 'high').length,
-      reviewBookings: directBookings.filter((booking) => booking.confidence !== 'high').length,
-      totalAttributedBookings: botBooked + directBookings.length,
+      calendarMatchedBookings: matchedBookings,
+      bookingsAfterRestart,
+      bookingsEarlierWaves: bookings.length - bookingsAfterRestart,
+      highConfidenceBookings: matchedBookings,
+      reviewBookings: bookings.length - matchedBookings,
+      totalAttributedBookings: bookings.length,
       dueSoonDeliveredReachouts: dueSoonDelivered,
       dueSoonBookings,
       dueSoonBookingConversionRate: percent(dueSoonBookings, dueSoonDelivered),
       replyRate: percent(base.replied, base.contacted),
       deliveredReplyRate: percent(base.replied, base.delivered),
-      attributedBookingRate: percent(botBooked + directBookings.length, base.contacted),
-      deliveredBookingRate: percent(botBooked + directBookings.length, base.delivered),
+      attributedBookingRate: percent(bookings.length, base.contacted),
+      deliveredBookingRate: percent(bookings.length, base.delivered),
     },
-    bookingsAfterWhatsApp: directBookings,
+    bookingsAfterWhatsApp: bookings,
     sendTimePerformance,
     bestSendWindows: sendTimePerformance
       .filter((bucket) => bucket.sent >= 5)
@@ -108,119 +97,78 @@ async function buildAnalytics() {
   };
 }
 
-async function findAttributedBookings(sessions) {
-  const sessionsByRegistration = new Map();
-  const earliestOutbound = sessions.reduce((min, session) => {
-    const ts = new Date(session.last_outbound_at).getTime();
-    return Number.isFinite(ts) ? Math.min(min, ts) : min;
-  }, Date.now());
+// While DORIS API access is blocked, bookings are attributed by matching the
+// vehicle registrations we messaged against tj_booking_snapshots (manual/Tier-2
+// calendar captures). A session counts as a booking if its registration is on a
+// captured calendar OR it was booked in-chat (stop_reason='booked').
+async function loadSnapshotsByReg() {
+  const snapshots = await fetchAll(() =>
+    supabase
+      .from('tj_booking_snapshots')
+      .select('reg, station_name, station_id, week, appointment_week_start, appointment_date, customer_name, is_baseline')
+      .order('id', { ascending: true })
+  );
+  const byReg = new Map();
+  for (const snap of snapshots) {
+    const reg = normalizeRegistration(snap.reg);
+    if (!reg || byReg.has(reg)) continue;
+    byReg.set(reg, snap);
+  }
+  return byReg;
+}
 
+function buildBookings(sessions, snapshotsByReg) {
+  const bookings = [];
   for (const session of sessions) {
     const raw = parseRaw(session.raw_data);
     const outbound = raw.tj_outbound || raw;
-    const registrations = (outbound.vehicles || [])
+    const regs = (outbound.vehicles || [])
       .map((vehicle) => normalizeRegistration(vehicle.registration))
       .filter(Boolean);
 
-    for (const registration of registrations) {
-      if (!sessionsByRegistration.has(registration)) {
-        sessionsByRegistration.set(registration, []);
-      }
-      sessionsByRegistration.get(registration).push({ session, outbound });
-    }
+    const matchedSnap = regs.map((reg) => snapshotsByReg.get(reg)).find(Boolean) || null;
+    const isBooked = session.stop_reminders && session.stop_reason === 'booked';
+    if (!matchedSnap && !isBooked) continue;
+
+    const registration = matchedSnap ? normalizeRegistration(matchedSnap.reg) : regs[0] || '';
+    const sentAt = session.last_outbound_at;
+    const sentMs = new Date(sentAt).getTime();
+    const appointmentAt = matchedSnap?.appointment_date || matchedSnap?.appointment_week_start || null;
+
+    bookings.push({
+      kind: matchedSnap ? 'calendar_match' : 'bot_booked',
+      calendarMatched: Boolean(matchedSnap),
+      confidence: 'high',
+      name:
+        outbound.customer_name ||
+        outbound.contact_person ||
+        matchedSnap?.customer_name ||
+        `Customer #${session.customer_id}`,
+      number: session.number,
+      customer_id: session.customer_id,
+      registration,
+      whatsappSentAt: sentAt,
+      whatsappSentLocal: formatHelsinki(sentAt),
+      customerReplied: Boolean(session.last_inbound_at),
+      replyAt: session.last_inbound_at,
+      replyAtLocal: session.last_inbound_at ? formatHelsinki(session.last_inbound_at) : '',
+      // No booking-created timestamp without DORIS; we group/sort by appointment week.
+      dorisBookingCreatedAt: appointmentAt,
+      dorisBookingCreatedLocal: appointmentAt ? formatApptWeek(appointmentAt) : '',
+      minutesAfterWhatsApp: null,
+      minutesAfterReply: null,
+      appointmentAt,
+      appointmentLocal: appointmentAt ? formatApptWeek(appointmentAt) : '',
+      bookedWeek: matchedSnap?.week ?? null,
+      isBaseline: Boolean(matchedSnap?.is_baseline),
+      messagedAfterRestart: Number.isFinite(sentMs) && sentMs >= CAMPAIGN_RESTART_AT,
+      station: matchedSnap?.station_name || '',
+      stopReason: session.stop_reason || 'active',
+      campaignType: session.campaign_type || outbound.campaign_type || '',
+      sendDayHour: dayHourKey(sentAt),
+    });
   }
-
-  if (sessionsByRegistration.size === 0) return [];
-
-  const start = dateOnly(new Date(earliestOutbound - 24 * 60 * 60 * 1000));
-  const end = dateOnly(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
-  const saleCache = new Map();
-  const bookings = [];
-  const seen = new Set();
-
-  for (const [siteId, site] of Object.entries(SITE_CALENDAR_MAP)) {
-    const calendar = await bridgeGet(`/api/doris/calendar/${site.calendarId}/events`, { start, end });
-    const events = Array.isArray(calendar) ? calendar : calendar.events || [];
-
-    for (const event of events) {
-      if (![2, 4].includes(event.eventType)) continue;
-      const registration = eventRegistration(event);
-      if (!registration || !sessionsByRegistration.has(registration)) continue;
-
-      for (const { session, outbound } of sessionsByRegistration.get(registration)) {
-        const saleId = event.info?.saleId;
-        if (!saleId) continue;
-
-        const saleKey = `${siteId}:${saleId}`;
-        if (!saleCache.has(saleKey)) {
-          saleCache.set(saleKey, bridgeGet(`/api/doris/sites/${siteId}/sales/${saleId}`));
-        }
-
-        const salePayload = await saleCache.get(saleKey);
-        const sale = salePayload.sale || {};
-        const task = (sale.tasks || []).find((item) => item.id === event.info?.taskId) || sale.tasks?.[0] || {};
-        const createdAt = task.dorisInfo?.createdAt || sale.createdAt;
-        const bookingCreated = createdAt ? new Date(createdAt).getTime() : 0;
-        const whatsappSent = new Date(session.last_outbound_at).getTime();
-        const replyAt = session.last_inbound_at ? new Date(session.last_inbound_at).getTime() : null;
-        const source = sale.source ?? event.info?.saleSource;
-        const isAfterWhatsApp = bookingCreated >= whatsappSent;
-        const isBotBooked = session.stop_reason === 'booked';
-
-        if (!isAfterWhatsApp || source !== 2 || isBotBooked) continue;
-
-        const uniqueKey = `${session.customer_id}:${saleId}:${registration}`;
-        if (seen.has(uniqueKey)) continue;
-        seen.add(uniqueKey);
-
-        const sessionName = outbound.customer_name || outbound.contact_person || '';
-        const dorisName = event.info?.customerName || sale.customer?.name || '';
-        const nameScoreValue = nameScore(sessionName, dorisName);
-
-        bookings.push({
-          kind: 'doris_after_whatsapp',
-          confidence: nameScoreValue === 'mismatch' || nameScoreValue === 'unknown' ? 'review' : 'high',
-          nameScore: nameScoreValue,
-          name: sessionName || dorisName || `Customer #${session.customer_id}`,
-          dorisName,
-          number: session.number,
-          customer_id: session.customer_id,
-          registration,
-          whatsappSentAt: session.last_outbound_at,
-          whatsappSentLocal: formatHelsinki(session.last_outbound_at),
-          customerReplied: Boolean(session.last_inbound_at),
-          replyAt: session.last_inbound_at,
-          replyAtLocal: session.last_inbound_at ? formatHelsinki(session.last_inbound_at) : '',
-          dorisBookingCreatedAt: createdAt,
-          dorisBookingCreatedLocal: formatHelsinki(createdAt),
-          minutesAfterWhatsApp: Math.round((bookingCreated - whatsappSent) / 60000),
-          minutesAfterReply: replyAt && bookingCreated >= replyAt
-            ? Math.round((bookingCreated - replyAt) / 60000)
-            : null,
-          appointmentAt: event.duration?.start,
-          appointmentLocal: formatHelsinki(event.duration?.start),
-          station: site.name,
-          saleId,
-          source,
-          eventType: event.eventType,
-          stopReason: session.stop_reason || 'active',
-          campaignType: session.campaign_type || outbound.campaign_type || '',
-          sendDayHour: dayHourKey(session.last_outbound_at),
-        });
-      }
-    }
-  }
-
-  return bookings.sort((a, b) => a.minutesAfterWhatsApp - b.minutesAfterWhatsApp);
-}
-
-async function bridgeGet(path, params = {}) {
-  const baseURL = process.env.DORIS_BRIDGE_URL || DEFAULT_BRIDGE_URL;
-  const apiKey = process.env.DORIS_BRIDGE_API_KEY || process.env.BRIDGE_API_KEY;
-  const headers = apiKey ? { 'X-API-Key': apiKey } : {};
-  const { data } = await axios.get(`${baseURL}${path}`, { params, headers, timeout: 120000 });
-  if (data?.success === false) throw new Error(data.error || 'DORIS bridge request failed');
-  return data?.data ?? data;
+  return bookings.sort((a, b) => new Date(b.appointmentAt || 0) - new Date(a.appointmentAt || 0));
 }
 
 function buildStatusMap(statuses) {
@@ -360,12 +308,6 @@ function countBy(rows, getKey) {
   }, {});
 }
 
-function eventRegistration(event) {
-  return normalizeRegistration(
-    event.info?.registrationNumber || event.info?.dorisRegistrationNumber || event.name
-  );
-}
-
 function parseRaw(rawData) {
   if (!rawData) return {};
   if (typeof rawData === 'string') {
@@ -388,36 +330,18 @@ function normalizePhone(value) {
   return phone;
 }
 
-function normalizeName(value) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9 ]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function nameScore(left, right) {
-  const a = normalizeName(left);
-  const b = normalizeName(right);
-  if (!a || !b) return 'unknown';
-  if (a === b) return 'exact';
-  const aParts = a.split(' ');
-  const bParts = b.split(' ');
-  const overlap = aParts.filter((part) => bParts.includes(part));
-  if (overlap.length >= 2) return 'strong';
-  if (overlap.length >= 1) return 'partial';
-  return 'mismatch';
-}
-
 function percent(numerator, denominator) {
   if (!denominator) return 0;
   return Math.round((numerator * 1000) / denominator) / 10;
 }
 
-function dateOnly(date) {
-  return date.toISOString().slice(0, 10);
+function formatApptWeek(value) {
+  if (!value) return '';
+  return `wk of ${new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Helsinki',
+    day: '2-digit',
+    month: 'short',
+  }).format(new Date(value))}`;
 }
 
 function formatHelsinki(value) {
