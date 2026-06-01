@@ -391,7 +391,7 @@ function BookingsChart({ rows, bookings }) {
         <div>
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-              Booking trend
+              Weekly bookings
             </p>
             <div className="flex items-center gap-3 text-[10px] text-[color:var(--color-ink-4)]">
               <LegendDot tone="amber" label="Due soon" />
@@ -745,9 +745,9 @@ function buildBookingChartRows(bookings) {
   }
   return Array.from(grouped.values())
     .sort((a, b) => new Date(a.key) - new Date(b.key))
-    .map((row, index) => ({
+    .map((row) => ({
       ...row,
-      displayLabel: `Week ${index + 1}`,
+      displayLabel: workWeekLabel(row.key),
     }));
 }
 
@@ -792,6 +792,31 @@ function shortDate(value) {
     day: '2-digit',
     month: 'short',
   }).format(new Date(value));
+}
+
+function workWeekLabel(value) {
+  if (!value || value === 'unknown') return '—';
+  const start = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return '—';
+  const end = new Date(start);
+  end.setDate(start.getDate() + 4);
+  const sameMonth = start.getMonth() === end.getMonth();
+  const startDay = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Helsinki',
+    day: 'numeric',
+  }).format(start);
+  const endLabel = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Helsinki',
+    day: 'numeric',
+    month: 'short',
+  }).format(end);
+  if (sameMonth) return `Mon-Fri ${startDay}-${endLabel}`;
+  const startLabel = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Helsinki',
+    day: 'numeric',
+    month: 'short',
+  }).format(start);
+  return `Mon-Fri ${startLabel}-${endLabel}`;
 }
 
 function formatLocal(value) {
