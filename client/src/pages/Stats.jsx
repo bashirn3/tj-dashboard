@@ -5,7 +5,6 @@ import {
   BarChart3,
   CalendarCheck,
   CheckCheck,
-  Eye,
   MessageSquareReply,
   Table2,
 } from 'lucide-react';
@@ -180,31 +179,23 @@ function PageHeader({ generatedAt }) {
   );
 }
 
-function KpiGrid({ stats, summary, leadPool, leadPoolLoading, leadPoolError }) {
+function KpiGrid({ stats, summary }) {
   const total = stats.total || {};
   const totalBookings = summary.totalAttributedBookings ?? (
     Number(summary.botBooked || 0) + Number(summary.bookingsAfterWhatsApp || 0)
   );
   const cards = [
+    { label: 'Total sent', value: total.sent ?? summary.contacted, icon: BarChart3, tone: 'amber' },
+    { label: 'Due soon sent', value: summary.dueSoonSentReachouts, icon: BarChart3, tone: 'teal' },
     { label: 'Delivered', value: total.delivered ?? summary.delivered, icon: CheckCheck, tone: 'amber' },
-    { label: 'Read', value: total.read ?? summary.read, icon: Eye, tone: 'teal' },
     { label: 'Replied', value: total.replied ?? summary.replied, icon: MessageSquareReply, tone: 'amber' },
-    { label: 'Bookings attributed to WhatsApp', value: totalBookings, icon: CalendarCheck, tone: 'moss', featured: true },
+    { label: 'Bookings', value: totalBookings, icon: CalendarCheck, tone: 'moss', featured: true },
     {
-      label: 'Due-soon conversion',
-      value: summary.dueSoonBookingConversionRate,
+      label: 'Conversions',
+      value: summary.dueSoonConversions ?? summary.dueSoonBookings,
       icon: BarChart3,
       tone: 'moss',
-      format: 'percent',
-      hint: `${formatNumber(summary.dueSoonBookings)} bookings / ${formatNumber(summary.dueSoonDeliveredReachouts)} delivered`,
-    },
-    {
-      label: 'Due-soon pool',
-      value: leadPoolError ? null : leadPool?.total_remaining,
-      icon: BarChart3,
-      tone: 'teal',
-      loading: leadPoolLoading,
-      hint: leadPool?.generated_at ? `Updated ${formatLocal(leadPool.generated_at)}` : 'Remaining uncontacted',
+      hint: `${formatPercent(summary.dueSoonBookingConversionRate)} due soon conversion`,
     },
   ];
 
@@ -336,11 +327,7 @@ function LeadPoolPanel({ leadPool, loading, error }) {
             <MiniMetric label="0-30d" value={formatNumber(deadlineBuckets.within_30_days)} tone="moss" />
             <MiniMetric label="31-60d" value={formatNumber(deadlineBuckets.days_31_to_60)} />
             <MiniMetric label="61-90d" value={formatNumber(deadlineBuckets.days_61_to_90)} />
-            <MiniMetric label="Unknown" value={formatNumber(deadlineBuckets.unknown)} />
           </div>
-          <p className="mt-3 text-[10px] text-[color:var(--color-ink-4)]">
-            Source window {leadPool.window?.start} to {leadPool.window?.end}; cached estimate.
-          </p>
         </div>
       </div>
     </section>
@@ -392,33 +379,23 @@ function ViewToggle({ value, onChange, firstLabel, secondLabel }) {
 function BookingsChart({ rows, bookings }) {
   const max = Math.max(...rows.map((row) => row.count), 1);
   const replied = bookings.filter((booking) => booking.customerReplied).length;
-  const calendarMatched = bookings.filter((booking) => booking.calendarMatched).length;
-  const sinceRestart = bookings.filter((booking) => booking.messagedAfterRestart).length;
-  const earlierWaves = bookings.length - sinceRestart;
-  const attribution = [
-    { key: 'matched', label: 'On calendar', count: calendarMatched, tone: 'moss' },
-    { key: 'restart', label: 'Since 29 May', count: sinceRestart, tone: 'amber' },
-    { key: 'earlier', label: 'Earlier waves', count: earlierWaves, tone: 'teal' },
-  ];
-  const maxAttribution = Math.max(...attribution.map((item) => item.count), 1);
 
   return (
     <div className="p-5">
       <div className="grid gap-3 sm:grid-cols-3">
-        <CompactStat label="Attributed bookings" value={bookings.length} tone="moss" />
+        <CompactStat label="Bookings" value={bookings.length} tone="moss" />
         <CompactStat label="Replied" value={replied} tone="amber" />
         <CompactStat label="No reply" value={bookings.length - replied} tone="teal" />
       </div>
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="mt-5">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-              By appointment week
+              Weekly bookings
             </p>
             <div className="flex items-center gap-3 text-[10px] text-[color:var(--color-ink-4)]">
               <LegendDot tone="amber" label="Due soon" />
               <LegendDot tone="clay" label="Passed" />
-              <LegendDot tone="teal" label="Other" />
             </div>
           </div>
           <div className="space-y-3">
@@ -428,32 +405,8 @@ function BookingsChart({ rows, bookings }) {
                 <div className="flex h-8 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
                   <Segment value={row.dueSoon} total={row.count} max={max} color="var(--color-amber)" />
                   <Segment value={row.passed} total={row.count} max={max} color="var(--color-clay)" />
-                  <Segment value={row.other} total={row.count} max={max} color="var(--color-teal)" />
                 </div>
                 <span className="text-right text-[12px] font-medium tabular-nums">{row.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-            Attribution
-          </p>
-          <div className="space-y-3">
-            {attribution.map((item) => (
-              <div key={item.key} className="grid grid-cols-[92px_1fr_26px] items-center gap-3">
-                <span className="text-[11px] text-[color:var(--color-ink-4)]">{item.label}</span>
-                <div className="h-7 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
-                  <div
-                    className="h-full rounded-lg transition-[width] duration-200"
-                    style={{
-                      width: `${Math.max((item.count / maxAttribution) * 100, item.count ? 6 : 0)}%`,
-                      backgroundColor: `var(--color-${item.tone})`,
-                    }}
-                  />
-                </div>
-                <span className="text-right text-[12px] font-medium tabular-nums">{item.count}</span>
               </div>
             ))}
           </div>
@@ -500,10 +453,10 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
               <th className="px-5 py-3 font-medium">Customer</th>
               <th className="px-3 py-3 font-medium">Campaign</th>
               <th className="px-3 py-3 font-medium">Car</th>
-              <th className="px-3 py-3 font-medium">Message sent</th>
+              <th className="px-3 py-3 font-medium">Contacted</th>
+              <th className="px-3 py-3 font-medium">Booked week</th>
               <th className="px-3 py-3 font-medium">Appointment</th>
               <th className="px-3 py-3 font-medium">Replied</th>
-              <th className="px-5 py-3 font-medium">Window</th>
             </tr>
           </thead>
           <tbody className="divide-y rule">
@@ -527,7 +480,8 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
                     {booking.station || (booking.calendarMatched ? '' : 'In-chat booking')}
                   </div>
                 </td>
-                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.whatsappSentLocal}</td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.contactedWeekLocal || booking.whatsappSentLocal}</td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.bookingDetectedLocal || '—'}</td>
                 <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.appointmentLocal || '—'}</td>
                 <td className="px-3 py-3">
                   {booking.customerReplied ? (
@@ -535,11 +489,6 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
                   ) : (
                     <span className="text-[color:var(--color-ink-4)]">No reply</span>
                   )}
-                </td>
-                <td className="px-5 py-3">
-                  <Badge tone={booking.messagedAfterRestart ? 'green' : 'amber'}>
-                    {booking.messagedAfterRestart ? 'Since 29 May' : 'Earlier wave'}
-                  </Badge>
                 </td>
               </tr>
             ))}
@@ -559,25 +508,14 @@ function BookingSummary({ summary }) {
         <h2 className="text-sm font-medium">Booking summary</h2>
         <div className="mt-4 rounded-xl bg-[color:var(--color-canvas-sunk)] p-4">
           <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-            Attributed bookings
+            Bookings
           </p>
           <p className="mt-2 font-display text-[50px] leading-none text-[color:var(--color-moss)]">
             {formatNumber(summary.totalAttributedBookings)}
           </p>
           <p className="mt-2 text-[12px] text-[color:var(--color-ink-3)]">
-            Messaged vehicles found on the booking calendar, plus in-chat bookings
-            {summary.calendarMatchedBookings !== undefined
-              ? ` (${formatNumber(summary.calendarMatchedBookings)} matched to the calendar).`
-              : '.'}
+            Vehicles booked after WhatsApp outreach.
           </p>
-        </div>
-      </div>
-
-      <div className="card p-5">
-        <h2 className="text-sm font-medium">Outreach window</h2>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <CompactStat label="Since 29 May" value={summary.bookingsAfterRestart || 0} tone="moss" />
-          <CompactStat label="Earlier waves" value={summary.bookingsEarlierWaves || 0} tone="teal" />
         </div>
       </div>
 
@@ -612,7 +550,7 @@ function SendTimeChart({ rows }) {
         </p>
         <div className="flex items-center gap-3 text-[10px] text-[color:var(--color-ink-4)]">
           <LegendDot tone="amber" label="Replies" />
-          <LegendDot tone="moss" label="Matched bookings" />
+          <LegendDot tone="moss" label="Bookings" />
         </div>
       </div>
 
@@ -701,10 +639,9 @@ function SendTimesTable({ windows, sort, onSortChange }) {
             <tr>
               <th className="px-5 py-3 font-medium">Send time</th>
               <th className="px-3 py-3 font-medium">Sent</th>
-              <th className="px-3 py-3 font-medium">Read</th>
               <th className="px-3 py-3 font-medium">Replies</th>
               <th className="px-3 py-3 font-medium">Reply rate</th>
-              <th className="px-5 py-3 font-medium">Matched bookings</th>
+              <th className="px-5 py-3 font-medium">Bookings</th>
             </tr>
           </thead>
           <tbody className="divide-y rule">
@@ -712,7 +649,6 @@ function SendTimesTable({ windows, sort, onSortChange }) {
               <tr key={window.key} className="hover:bg-[color:var(--color-canvas-sunk)]/45">
                 <td className="px-5 py-3 font-medium">{window.key}:00</td>
                 <td className="px-3 py-3 tabular-nums">{formatNumber(window.sent)}</td>
-                <td className="px-3 py-3 tabular-nums">{formatNumber(window.read)}</td>
                 <td className="px-3 py-3 tabular-nums">{formatNumber(window.replied)}</td>
                 <td className="px-3 py-3 font-medium tabular-nums text-[color:var(--color-amber)]">
                   {formatPercent(window.replyRate)}
@@ -847,7 +783,7 @@ function dateKey(value) {
 }
 
 function shortDate(value) {
-  if (!value) return 'Unknown';
+  if (!value) return '—';
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/Helsinki',
     day: '2-digit',

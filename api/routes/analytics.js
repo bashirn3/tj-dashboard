@@ -50,11 +50,14 @@ async function buildAnalytics() {
 
   const repliedBookings = bookings.filter((booking) => booking.customerReplied).length;
   const matchedBookings = bookings.filter((booking) => booking.calendarMatched).length;
-  const bookingsAfterRestart = bookings.filter((booking) => booking.messagedAfterRestart).length;
   const bookingsByCampaign = countBy(bookings, (booking) => booking.campaignType || 'unknown');
   const botBooked = rows.filter((row) => row.botBooked).length;
+  const dueSoonSent = rows.filter((row) => row.campaignType === 'due_soon').length;
   const dueSoonDelivered = rows.filter((row) => row.campaignType === 'due_soon' && row.delivered).length;
   const dueSoonBookings = bookings.filter((booking) => booking.campaignType === 'due_soon').length;
+  const dueSoonConversions = bookings.filter(
+    (booking) => booking.campaignType === 'due_soon' && !booking.isBaseline
+  ).length;
   const sendTimePerformance = buildSendTimePerformance(rows, bookings);
   const replyTiming = buildReplyTiming(rows);
 
@@ -73,14 +76,14 @@ async function buildAnalytics() {
       bookingsAfterWhatsAppSilent: bookings.length - repliedBookings,
       bookingsAfterWhatsAppByCampaign: bookingsByCampaign,
       calendarMatchedBookings: matchedBookings,
-      bookingsAfterRestart,
-      bookingsEarlierWaves: bookings.length - bookingsAfterRestart,
       highConfidenceBookings: matchedBookings,
       reviewBookings: bookings.length - matchedBookings,
       totalAttributedBookings: bookings.length,
+      dueSoonSentReachouts: dueSoonSent,
       dueSoonDeliveredReachouts: dueSoonDelivered,
       dueSoonBookings,
-      dueSoonBookingConversionRate: percent(dueSoonBookings, dueSoonDelivered),
+      dueSoonConversions,
+      dueSoonBookingConversionRate: percent(dueSoonConversions, dueSoonSent),
       replyRate: percent(base.replied, base.contacted),
       deliveredReplyRate: percent(base.replied, base.delivered),
       attributedBookingRate: percent(bookings.length, base.contacted),
@@ -105,7 +108,7 @@ async function loadSnapshotsByReg() {
   const snapshots = await fetchAll(() =>
     supabase
       .from('tj_booking_snapshots')
-      .select('reg, station_name, station_id, week, appointment_week_start, appointment_date, customer_name, is_baseline')
+      .select('reg, station_name, station_id, week, appointment_week_start, appointment_date, customer_name, is_baseline, first_seen_at')
       .order('id', { ascending: true })
   );
   const byReg = new Map();
@@ -134,6 +137,7 @@ function buildBookings(sessions, snapshotsByReg) {
     const sentAt = session.last_outbound_at;
     const sentMs = new Date(sentAt).getTime();
     const appointmentAt = matchedSnap?.appointment_date || matchedSnap?.appointment_week_start || null;
+    const bookingDetectedAt = matchedSnap?.first_seen_at || (isBooked ? session.last_inbound_at || sentAt : null);
 
     bookings.push({
       kind: matchedSnap ? 'calendar_match' : 'bot_booked',
@@ -149,12 +153,16 @@ function buildBookings(sessions, snapshotsByReg) {
       registration,
       whatsappSentAt: sentAt,
       whatsappSentLocal: formatHelsinki(sentAt),
+      contactedWeekLocal: formatApptWeek(sentAt),
       customerReplied: Boolean(session.last_inbound_at),
       replyAt: session.last_inbound_at,
       replyAtLocal: session.last_inbound_at ? formatHelsinki(session.last_inbound_at) : '',
-      // No booking-created timestamp without DORIS; we group/sort by appointment week.
-      dorisBookingCreatedAt: appointmentAt,
-      dorisBookingCreatedLocal: appointmentAt ? formatApptWeek(appointmentAt) : '',
+      // Without DORIS booking-created timestamps, first_seen_at is the cleanest
+      // week-level proxy for when a booking entered our captured calendar.
+      dorisBookingCreatedAt: bookingDetectedAt,
+      dorisBookingCreatedLocal: bookingDetectedAt ? formatApptWeek(bookingDetectedAt) : '',
+      bookingDetectedAt,
+      bookingDetectedLocal: bookingDetectedAt ? formatApptWeek(bookingDetectedAt) : '',
       minutesAfterWhatsApp: null,
       minutesAfterReply: null,
       appointmentAt,

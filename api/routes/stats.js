@@ -111,13 +111,17 @@ router.get('/', async (_req, res) => {
 
 router.get('/lead-pool', async (req, res) => {
   const refresh = req.query.refresh === '1';
-  const { data: sessions, error } = await supabase
-    .from('tj_outbound_sessions')
-    .select('number, customer_id, campaign_type');
-
-  if (error) {
-    console.error('[lead-pool]', error);
-    return res.status(500).json({ error: error.message });
+  let sessions;
+  try {
+    sessions = await fetchAll(() =>
+      supabase
+        .from('tj_outbound_sessions')
+        .select('number, customer_id, campaign_type')
+        .order('id', { ascending: true })
+    );
+  } catch (err) {
+    console.error('[lead-pool]', err);
+    return res.status(500).json({ error: err.message });
   }
 
   try {
