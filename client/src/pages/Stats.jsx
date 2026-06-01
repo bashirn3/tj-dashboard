@@ -391,7 +391,7 @@ function BookingsChart({ rows, bookings }) {
         <div>
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--color-ink-4)]">
-              Weekly bookings
+              Booking trend
             </p>
             <div className="flex items-center gap-3 text-[10px] text-[color:var(--color-ink-4)]">
               <LegendDot tone="amber" label="Due soon" />
@@ -400,8 +400,8 @@ function BookingsChart({ rows, bookings }) {
           </div>
           <div className="space-y-3">
             {rows.map((row) => (
-              <div key={row.key} className="grid grid-cols-[88px_1fr_34px] items-center gap-3">
-                <span className="text-[11px] text-[color:var(--color-ink-4)]">{row.label}</span>
+              <div key={row.key} className="grid grid-cols-[72px_1fr_34px] items-center gap-3">
+                <span className="text-[11px] text-[color:var(--color-ink-4)]">{row.displayLabel}</span>
                 <div className="flex h-8 overflow-hidden rounded-lg bg-[color:var(--color-canvas-sunk)]">
                   <Segment value={row.dueSoon} total={row.count} max={max} color="var(--color-amber)" />
                   <Segment value={row.passed} total={row.count} max={max} color="var(--color-clay)" />
@@ -454,8 +454,7 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
               <th className="px-3 py-3 font-medium">Campaign</th>
               <th className="px-3 py-3 font-medium">Car</th>
               <th className="px-3 py-3 font-medium">Contacted</th>
-              <th className="px-3 py-3 font-medium">Booked week</th>
-              <th className="px-3 py-3 font-medium">Appointment</th>
+              <th className="px-3 py-3 font-medium">Booked</th>
               <th className="px-3 py-3 font-medium">Replied</th>
             </tr>
           </thead>
@@ -480,9 +479,8 @@ function BookingsTable({ bookings, sort, onSortChange, returnTo }) {
                     {booking.station || (booking.calendarMatched ? '' : 'In-chat booking')}
                   </div>
                 </td>
-                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.contactedWeekLocal || booking.whatsappSentLocal}</td>
-                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.bookingDetectedLocal || '—'}</td>
-                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.appointmentLocal || '—'}</td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">{booking.whatsappSentLocal ? 'Yes' : '—'}</td>
+                <td className="px-3 py-3 text-[color:var(--color-ink-3)]">Yes</td>
                 <td className="px-3 py-3">
                   {booking.customerReplied ? (
                     <span className="font-medium text-[color:var(--color-amber)]">Yes</span>
@@ -745,7 +743,12 @@ function buildBookingChartRows(bookings) {
     else if (booking.campaignType === 'passed') row.passed++;
     else row.other++;
   }
-  return Array.from(grouped.values()).sort((a, b) => new Date(b.key) - new Date(a.key));
+  return Array.from(grouped.values())
+    .sort((a, b) => new Date(a.key) - new Date(b.key))
+    .map((row, index) => ({
+      ...row,
+      displayLabel: `Week ${index + 1}`,
+    }));
 }
 
 function buildSendHeatmap(rows) {
