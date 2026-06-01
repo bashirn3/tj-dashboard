@@ -208,6 +208,7 @@ function formatSession(session, statusByNumber) {
     customer_id: session.customer_id,
     name: outbound.customer_name || outbound.contact_person || '',
     sentAt,
+    sentMs,
     repliedAt,
     stopReason: session.stop_reason || '',
     campaignType: session.campaign_type || outbound.campaign_type || '',
