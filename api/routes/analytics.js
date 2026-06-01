@@ -44,6 +44,8 @@ async function buildAnalytics() {
   const statusByNumber = buildStatusMap(allStatuses);
   const rows = sessions.map((session) => formatSession(session, statusByNumber));
   const base = buildBaseStats(rows);
+  const activeRows = rows.filter((row) => row.sentMs >= CAMPAIGN_RESTART_AT);
+  const activeBase = buildBaseStats(activeRows);
 
   const snapshotsByReg = await loadSnapshotsByReg();
   const bookings = buildBookings(sessions, snapshotsByReg);
@@ -55,9 +57,7 @@ async function buildAnalytics() {
   const dueSoonSent = rows.filter((row) => row.campaignType === 'due_soon').length;
   const dueSoonDelivered = rows.filter((row) => row.campaignType === 'due_soon' && row.delivered).length;
   const dueSoonBookings = bookings.filter((booking) => booking.campaignType === 'due_soon').length;
-  const dueSoonConversions = bookings.filter(
-    (booking) => booking.campaignType === 'due_soon' && !booking.isBaseline
-  ).length;
+  const activeDueSoonSent = activeRows.filter((row) => row.campaignType === 'due_soon').length;
   const sendTimePerformance = buildSendTimePerformance(rows, bookings);
   const replyTiming = buildReplyTiming(rows);
 
@@ -79,11 +79,16 @@ async function buildAnalytics() {
       highConfidenceBookings: matchedBookings,
       reviewBookings: bookings.length - matchedBookings,
       totalAttributedBookings: bookings.length,
+      currentSent: activeBase.contacted,
+      currentDueSoonSent: activeDueSoonSent,
+      currentDelivered: activeBase.delivered,
+      currentReplied: activeBase.replied,
+      currentBookingConversionRate: percent(bookings.length, activeDueSoonSent || activeBase.contacted),
       dueSoonSentReachouts: dueSoonSent,
       dueSoonDeliveredReachouts: dueSoonDelivered,
       dueSoonBookings,
-      dueSoonConversions,
-      dueSoonBookingConversionRate: percent(dueSoonConversions, dueSoonSent),
+      dueSoonConversions: dueSoonBookings,
+      dueSoonBookingConversionRate: percent(bookings.length, activeDueSoonSent || activeBase.contacted),
       replyRate: percent(base.replied, base.contacted),
       deliveredReplyRate: percent(base.replied, base.delivered),
       attributedBookingRate: percent(bookings.length, base.contacted),
