@@ -34,7 +34,10 @@ async function buildAnalytics() {
         .order('id', { ascending: true })
     ),
     fetchAll(() =>
-      supabase.from('tj_message_status').select('number, status').order('id', { ascending: true })
+      supabase
+        .from('tj_message_status')
+        .select('number, status, stage, sent_at')
+        .order('id', { ascending: true })
     ),
   ]);
 
@@ -49,6 +52,7 @@ async function buildAnalytics() {
 
   const snapshotsByReg = await loadSnapshotsByReg();
   const bookings = buildBookings(sessions, snapshotsByReg);
+  const reminders = buildReminderSummary(sessions, allStatuses, snapshotsByReg);
 
   const repliedBookings = bookings.filter((booking) => booking.customerReplied).length;
   const matchedBookings = bookings.filter((booking) => booking.calendarMatched).length;
@@ -89,6 +93,11 @@ async function buildAnalytics() {
       dueSoonBookings,
       dueSoonConversions: dueSoonBookings,
       dueSoonBookingConversionRate: percent(bookings.length, activeDueSoonSent || activeBase.contacted),
+      remindersSent: reminders.sent,
+      pendingReminders: reminders.pending,
+      reminderBacklog: reminders.pending,
+      nextReminderAt: reminders.nextReminderAt,
+      remindersByStage: reminders.byStage,
       replyRate: percent(base.replied, base.contacted),
       deliveredReplyRate: percent(base.replied, base.delivered),
       attributedBookingRate: percent(bookings.length, base.contacted),
@@ -312,6 +321,58 @@ function buildReplyTiming(rows) {
       .sort((a, b) => b.replies - a.replies)
       .slice(0, 12),
   };
+}
+
+function buildReminderSummary(sessions, statuses, snapshotsByReg) {
+  const now = Date.now();
+  const pendingByStage = {};
+  let pending = 0;
+  let nextReminderAt = null;
+
+  for (const session of sessions) {
+    const sentMs = new Date(session.last_outbound_at).getTime();
+    if (!Number.isFinite(sentMs) || sentMs < CAMPAIGN_RESTART_AT) continue;
+    if (session.stop_reminders) continue;
+    if (hasSnapshotBooking(session, snapshotsByReg)) continue;
+
+    const stage = session.reminder_stage || 'first_contact';
+    const delayHours = stage === 'first_contact'
+      ? 48
+      : ['first_followup', 'second_followup', 'final_followup'].includes(stage)
+        ? 72
+        : null;
+    if (!delayHours) continue;
+
+    const dueAt = sentMs + delayHours * 60 * 60 * 1000;
+    if (dueAt <= now) {
+      pending += 1;
+      pendingByStage[stage] = (pendingByStage[stage] || 0) + 1;
+    } else if (!nextReminderAt || dueAt < new Date(nextReminderAt).getTime()) {
+      nextReminderAt = new Date(dueAt).toISOString();
+    }
+  }
+
+  const sent = statuses.filter((status) => {
+    const stage = String(status.stage || '');
+    const sentMs = new Date(status.sent_at).getTime();
+    return stage.startsWith('reminder_') && Number.isFinite(sentMs) && sentMs >= CAMPAIGN_RESTART_AT;
+  }).length;
+
+  return {
+    sent,
+    pending,
+    nextReminderAt,
+    byStage: pendingByStage,
+  };
+}
+
+function hasSnapshotBooking(session, snapshotsByReg) {
+  const raw = parseRaw(session.raw_data);
+  const outbound = raw.tj_outbound || raw;
+  return (outbound.vehicles || [])
+    .map((vehicle) => normalizeRegistration(vehicle.registration))
+    .filter(Boolean)
+    .some((reg) => snapshotsByReg.has(reg));
 }
 
 function countBy(rows, getKey) {

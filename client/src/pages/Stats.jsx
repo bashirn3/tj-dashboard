@@ -99,6 +99,7 @@ export default function StatsPage() {
         leadPoolError={leadPoolQuery.isError}
       />
       <PeriodCards stats={stats} />
+      <ReminderPanel summary={summary} />
       <LeadPoolPanel
         leadPool={leadPool}
         loading={leadPoolQuery.isLoading || leadPool?.status === 'running'}
@@ -249,6 +250,39 @@ function PeriodCards({ stats }) {
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+function ReminderPanel({ summary }) {
+  const byStage = summary.remindersByStage || {};
+  const pending = Number(summary.pendingReminders || 0);
+  const nextLabel = pending > 0
+    ? 'Ready now'
+    : summary.nextReminderAt
+      ? formatLocal(summary.nextReminderAt)
+      : '—';
+
+  return (
+    <section className="card p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-sm font-medium">Reminders</h2>
+          <p className="mt-1 text-[12px] text-[color:var(--color-ink-3)]">
+            Follow-ups for active outreach customers who have not booked yet.
+          </p>
+        </div>
+        <div className="grid min-w-full gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+          <MiniMetric label="Sent" value={formatNumber(summary.remindersSent)} tone="moss" />
+          <MiniMetric label="Pending" value={formatNumber(pending)} tone={pending > 0 ? 'moss' : undefined} />
+          <MiniMetric label="Next" value={nextLabel} />
+        </div>
+      </div>
+      {pending > 0 && (
+        <p className="mt-3 text-[11px] text-[color:var(--color-ink-4)]">
+          Pending by stage: {formatReminderStages(byStage)}
+        </p>
+      )}
     </section>
   );
 }
@@ -706,6 +740,20 @@ function CampaignBadge({ type }) {
   if (type === 'due_soon') return <Badge tone="amber">Due soon</Badge>;
   if (type === 'passed') return <Badge tone="clay">Passed</Badge>;
   return <Badge tone="neutral">Other</Badge>;
+}
+
+function formatReminderStages(stages) {
+  const labels = {
+    first_contact: 'first',
+    first_followup: 'second',
+    second_followup: 'final',
+    final_followup: 'final',
+  };
+  const rows = Object.entries(stages || {}).filter(([, value]) => Number(value) > 0);
+  if (!rows.length) return '—';
+  return rows
+    .map(([stage, value]) => `${labels[stage] || stage}: ${formatNumber(value)}`)
+    .join(' · ');
 }
 
 function StatsSkeleton() {
