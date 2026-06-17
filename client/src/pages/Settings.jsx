@@ -183,7 +183,7 @@ function StationPauseControl({ addToast }) {
   return (
     <section>
       <h2 className="mb-3 text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)]">
-        Station pause
+        Station outreach
       </h2>
       <div className="card px-5 py-4">
         <div className="flex items-start gap-3 mb-4">
@@ -191,9 +191,9 @@ function StationPauseControl({ addToast }) {
             <PauseCircle size={16} strokeWidth={1.75} />
           </div>
           <div>
-            <h3 className="text-sm font-medium text-[color:var(--color-ink)]">Pause by Station</h3>
+            <h3 className="text-sm font-medium text-[color:var(--color-ink)]">Active by Station</h3>
             <p className="text-[11px] text-[color:var(--color-ink-4)] mt-0.5">
-              Paused stations are skipped for both new outreach and reminder sends.
+              Turn a station off to pause both new outreach and reminder sends.
             </p>
           </div>
         </div>
@@ -222,12 +222,12 @@ function StationPauseControl({ addToast }) {
                       {station.station_name}
                     </p>
                     <p className="text-[10px] text-[color:var(--color-ink-4)]">
-                      {station.paused ? 'Paused for outbound + reminders' : 'Active for outbound + reminders'}
+                      {station.paused ? 'Outreach + reminders paused' : 'Outreach + reminders enabled'}
                     </p>
                   </div>
                 </div>
                 <Toggle
-                  enabled={station.paused}
+                  enabled={!station.paused}
                   disabled={mutation.isPending}
                   onToggle={() => mutation.mutate({
                     stationId: station.station_id,
