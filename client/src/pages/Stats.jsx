@@ -745,6 +745,8 @@ function CampaignBadge({ type }) {
 function formatReminderStages(stages) {
   const labels = {
     first_contact: 'first',
+    reminder_1d: 'second',
+    reminder_3d: 'final',
     first_followup: 'second',
     second_followup: 'final',
     final_followup: 'final',

@@ -338,7 +338,7 @@ function buildReminderSummary(sessions, statuses, snapshotsByReg) {
     const stage = session.reminder_stage || 'first_contact';
     const delayHours = stage === 'first_contact'
       ? 48
-      : ['first_followup', 'second_followup', 'final_followup'].includes(stage)
+      : ['reminder_1d', 'reminder_3d', 'first_followup', 'second_followup', 'final_followup'].includes(stage)
         ? 72
         : null;
     if (!delayHours) continue;

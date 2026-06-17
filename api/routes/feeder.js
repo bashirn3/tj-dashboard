@@ -4,6 +4,29 @@ import axios from 'axios';
 
 const router = Router();
 
+const STATIONS = [
+  { station_id: 58, station_name: 'Vaajakoski' },
+  { station_id: 59, station_name: 'Jämsä' },
+  { station_id: 60, station_name: 'Laukaa' },
+  { station_id: 61, station_name: 'Muurame' },
+];
+
+async function ensureStationPauseRows() {
+  const { error } = await supabase
+    .from('tj_station_pause')
+    .upsert(
+      STATIONS.map((station) => ({
+        ...station,
+        paused: false,
+        pause_outbound: true,
+        pause_reminders: true,
+      })),
+      { onConflict: 'station_id', ignoreDuplicates: true }
+    );
+
+  if (error) throw error;
+}
+
 router.post('/trigger', async (req, res) => {
   const { max_leads_to_send, lead_type } = req.body;
 
@@ -114,6 +137,60 @@ router.put('/auto-send', async (req, res) => {
   }
 
   res.json({ ok: true, [column]: enabled });
+});
+
+router.get('/station-pause', async (_req, res) => {
+  try {
+    await ensureStationPauseRows();
+
+    const { data, error } = await supabase
+      .from('tj_station_pause')
+      .select('station_id, station_name, paused, pause_outbound, pause_reminders, reason, updated_at')
+      .order('station_id', { ascending: true });
+
+    if (error) throw error;
+
+    res.json({ stations: data || [] });
+  } catch (err) {
+    console.error('[station-pause]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/station-pause/:stationId', async (req, res) => {
+  const stationId = Number(req.params.stationId);
+  const { paused, reason } = req.body;
+
+  if (!STATIONS.some((station) => station.station_id === stationId)) {
+    return res.status(400).json({ error: 'unknown station id' });
+  }
+  if (typeof paused !== 'boolean') {
+    return res.status(400).json({ error: 'paused must be a boolean' });
+  }
+
+  const station = STATIONS.find((item) => item.station_id === stationId);
+  const payload = {
+    station_id: stationId,
+    station_name: station.station_name,
+    paused,
+    pause_outbound: true,
+    pause_reminders: true,
+    reason: paused ? (reason || 'Paused from dashboard') : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('tj_station_pause')
+    .upsert(payload, { onConflict: 'station_id' })
+    .select('station_id, station_name, paused, pause_outbound, pause_reminders, reason, updated_at')
+    .single();
+
+  if (error) {
+    console.error('[station-pause]', error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ ok: true, station: data });
 });
 
 export default router;

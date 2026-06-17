@@ -60,6 +60,16 @@ export async function setAutoSend(type, enabled) {
   return data;
 }
 
+export async function getStationPause() {
+  const { data } = await api.get('/feeder/station-pause');
+  return data;
+}
+
+export async function setStationPause(stationId, paused) {
+  const { data } = await api.put(`/feeder/station-pause/${stationId}`, { paused });
+  return data;
+}
+
 export async function getFeederProgress(since) {
   const { data } = await api.get('/feeder/progress', { params: { since } });
   return data;

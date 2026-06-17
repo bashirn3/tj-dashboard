@@ -4,6 +4,8 @@ import {
   Activity,
   Clock,
   Loader2,
+  MapPin,
+  PauseCircle,
   Rocket,
   Send,
   Timer,
@@ -11,7 +13,9 @@ import {
 import {
   getAutoSend,
   getFeederProgress,
+  getStationPause,
   setAutoSend,
+  setStationPause,
   triggerFeeder,
 } from '../lib/api.js';
 import Skeleton from '../components/ui/Skeleton.jsx';
@@ -33,6 +37,7 @@ export default function SettingsPage() {
       </div>
 
       <AutoSendControl />
+      <StationPauseControl addToast={addToast} />
       <FeederControl addToast={addToast} />
     </div>
   );
@@ -141,6 +146,103 @@ function AutoSendControl() {
           <div className="mt-3 rounded-lg bg-[color:var(--color-moss-soft)] px-3 py-2 text-[11px] font-medium text-[color:var(--color-moss)] flex items-center gap-2">
             <Activity size={12} />
             Active - sending {dueSoonOn && passedOn ? 'due soon + passed' : dueSoonOn ? 'due soon' : 'passed'} ({activeScheduleLabel})
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StationPauseControl({ addToast }) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['station-pause'],
+    queryFn: getStationPause,
+    refetchInterval: 30_000,
+  });
+
+  const mutation = useMutation({
+    mutationFn: ({ stationId, paused }) => setStationPause(stationId, paused),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['station-pause'] });
+      addToast(
+        variables.paused ? 'Station paused for outbound + reminders' : 'Station resumed',
+        variables.paused ? 'info' : 'success'
+      );
+    },
+    onError: (err) => {
+      const msg = err.response?.data?.error || err.message;
+      addToast(`Failed to update station pause: ${msg}`, 'error');
+    },
+  });
+
+  const stations = data?.stations || [];
+  const pausedCount = stations.filter((station) => station.paused).length;
+
+  return (
+    <section>
+      <h2 className="mb-3 text-[11px] uppercase tracking-[0.18em] text-[color:var(--color-ink-4)]">
+        Station pause
+      </h2>
+      <div className="card px-5 py-4">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="grid size-9 shrink-0 place-items-center rounded-full border rule text-[color:var(--color-clay)]">
+            <PauseCircle size={16} strokeWidth={1.75} />
+          </div>
+          <div>
+            <h3 className="text-sm font-medium text-[color:var(--color-ink)]">Pause by Station</h3>
+            <p className="text-[11px] text-[color:var(--color-ink-4)] mt-0.5">
+              Paused stations are skipped for both new outreach and reminder sends.
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {stations.map((station) => (
+              <div
+                key={station.station_id}
+                className="flex items-center justify-between rounded-lg border rule px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <MapPin
+                    size={14}
+                    className={station.paused ? 'text-[color:var(--color-sienna)]' : 'text-[color:var(--color-moss)]'}
+                  />
+                  <div>
+                    <p className="text-[13px] font-medium text-[color:var(--color-ink)]">
+                      {station.station_name}
+                    </p>
+                    <p className="text-[10px] text-[color:var(--color-ink-4)]">
+                      {station.paused ? 'Paused for outbound + reminders' : 'Active for outbound + reminders'}
+                    </p>
+                  </div>
+                </div>
+                <Toggle
+                  enabled={station.paused}
+                  disabled={mutation.isPending}
+                  onToggle={() => mutation.mutate({
+                    stationId: station.station_id,
+                    paused: !station.paused,
+                  })}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {pausedCount > 0 && (
+          <div className="mt-3 rounded-lg bg-[color:var(--color-sienna-soft)] px-3 py-2 text-[11px] font-medium text-[color:var(--color-sienna)] flex items-center gap-2">
+            <PauseCircle size={12} />
+            {pausedCount} station{pausedCount !== 1 ? 's' : ''} paused - no first contact or reminders will send there.
           </div>
         )}
       </div>
