@@ -7,6 +7,7 @@ const router = Router();
 // Bookings messaged on/after this are "since restart"; earlier ones are prior waves.
 const CAMPAIGN_RESTART_AT = new Date('2026-05-29T09:31:00+03:00').getTime();
 const CACHE_TTL_MS = 10 * 60 * 1000;
+const BOOKED_STOP_REASONS = new Set(['booked', 'booked_from_snapshot']);
 
 let cache = { at: 0, data: null };
 
@@ -144,7 +145,7 @@ function buildBookings(sessions, snapshotsByReg) {
       .filter(Boolean);
 
     const matchedSnap = regs.map((reg) => snapshotsByReg.get(reg)).find(Boolean) || null;
-    const isBooked = session.stop_reminders && session.stop_reason === 'booked';
+    const isBooked = session.stop_reminders && BOOKED_STOP_REASONS.has(session.stop_reason);
     if (!matchedSnap && !isBooked) continue;
 
     const registration = matchedSnap ? normalizeRegistration(matchedSnap.reg) : regs[0] || '';
@@ -221,7 +222,7 @@ function formatSession(session, statusByNumber) {
     repliedAt,
     stopReason: session.stop_reason || '',
     campaignType: session.campaign_type || outbound.campaign_type || '',
-    botBooked: session.stop_reminders && session.stop_reason === 'booked',
+    botBooked: session.stop_reminders && BOOKED_STOP_REASONS.has(session.stop_reason),
     delivered: statuses.has('delivered') || statuses.has('read'),
     read: statuses.has('read'),
     replied: Boolean(repliedAt),

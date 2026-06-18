@@ -4,6 +4,7 @@ import { supabase, fetchAll } from '../lib/supabase.js';
 
 const router = Router();
 const DEFAULT_BRIDGE_URL = 'https://doris-bridge.yellowpond-051e3dca.eastus.azurecontainerapps.io';
+const BOOKED_STOP_REASONS = new Set(['booked', 'booked_from_snapshot']);
 
 router.get('/', async (_req, res) => {
   let sessions;
@@ -46,7 +47,7 @@ router.get('/', async (_req, res) => {
   for (const s of sessions) {
     totalSent++;
     if (s.last_inbound_at) totalReplied++;
-    if (s.stop_reminders && s.stop_reason === 'booked') booked++;
+    if (s.stop_reminders && BOOKED_STOP_REASONS.has(s.stop_reason)) booked++;
     else if (s.stop_reminders) stopped++;
 
     const sentAt = new Date(s.last_outbound_at);

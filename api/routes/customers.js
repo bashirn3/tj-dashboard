@@ -2,6 +2,11 @@ import { Router } from 'express';
 import { supabase, fetchAll } from '../lib/supabase.js';
 
 const router = Router();
+const BOOKED_STOP_REASONS = ['booked', 'booked_from_snapshot'];
+
+function isBookedStopReason(reason) {
+  return BOOKED_STOP_REASONS.includes(reason);
+}
 
 router.get('/', async (req, res) => {
   const { search, status, station, campaign } = req.query;
@@ -23,9 +28,9 @@ router.get('/', async (req, res) => {
   if (status === 'replied') {
     query = query.not('last_inbound_at', 'is', null);
   } else if (status === 'booked') {
-    query = query.eq('stop_reminders', true).eq('stop_reason', 'booked');
+    query = query.eq('stop_reminders', true).in('stop_reason', BOOKED_STOP_REASONS);
   } else if (status === 'stopped') {
-    query = query.eq('stop_reminders', true).neq('stop_reason', 'booked');
+    query = query.eq('stop_reminders', true).not('stop_reason', 'in', `(${BOOKED_STOP_REASONS.join(',')})`);
   }
 
   let sessionsResult;
@@ -140,7 +145,7 @@ function formatCustomer(row, statusByNumber = {}) {
   const deliveryStatus = statusByNumber[row.number] || 'sent';
 
   let status = 'sent';
-  if (row.stop_reminders && row.stop_reason === 'booked') status = 'booked';
+  if (row.stop_reminders && isBookedStopReason(row.stop_reason)) status = 'booked';
   else if (row.stop_reminders) status = 'stopped';
   else if (row.last_inbound_at) status = 'replied';
   else if (deliveryStatus === 'read') status = 'read';
