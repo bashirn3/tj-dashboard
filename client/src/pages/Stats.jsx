@@ -186,10 +186,10 @@ function KpiGrid({ stats, summary }) {
     Number(summary.botBooked || 0) + Number(summary.bookingsAfterWhatsApp || 0)
   );
   const cards = [
-    { label: 'Total sent', value: summary.currentSent ?? total.sent ?? summary.contacted, icon: BarChart3, tone: 'amber' },
-    { label: 'Due soon sent', value: summary.currentDueSoonSent ?? summary.dueSoonSentReachouts, icon: BarChart3, tone: 'teal' },
-    { label: 'Delivered', value: summary.currentDelivered ?? total.delivered ?? summary.delivered, icon: CheckCheck, tone: 'amber' },
-    { label: 'Replied', value: summary.currentReplied ?? total.replied ?? summary.replied, icon: MessageSquareReply, tone: 'amber' },
+    { label: 'Total sent', value: total.sent ?? summary.contacted ?? summary.currentSent, icon: BarChart3, tone: 'amber' },
+    { label: 'Due soon sent', value: summary.dueSoonSentReachouts ?? summary.currentDueSoonSent, icon: BarChart3, tone: 'teal' },
+    { label: 'Delivered', value: total.delivered ?? summary.delivered ?? summary.currentDelivered, icon: CheckCheck, tone: 'amber' },
+    { label: 'Replied', value: total.replied ?? summary.replied ?? summary.currentReplied, icon: MessageSquareReply, tone: 'amber' },
     { label: 'Bookings', value: totalBookings, icon: CalendarCheck, tone: 'moss', featured: true },
     {
       label: 'Conversion',
