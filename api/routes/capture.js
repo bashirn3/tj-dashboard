@@ -99,7 +99,7 @@ router.post('/extract', async (req, res) => {
         week_start: weekStart,
         image_base64,
       },
-      { timeout: 120_000, maxBodyLength: Infinity, maxContentLength: Infinity },
+      { timeout: 1_200_000, maxBodyLength: Infinity, maxContentLength: Infinity },
     );
     visionData = data;
   } catch (err) {
